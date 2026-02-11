@@ -37,7 +37,7 @@ function reducer(state, action) {
         ...state,
         meta: action.payload[SHEET_TABS.META]?.[0] || initialState.meta,
         accounts: action.payload[SHEET_TABS.ACCOUNTS] || [],
-        transactions: action.payload[SHEET_TABS.TRANSACTIONS] || [],
+        transactions: action.payload.transactions || [],
         payees: action.payload[SHEET_TABS.PAYEES] || [],
         categories: action.payload[SHEET_TABS.CATEGORIES] || [],
         reconciliations: action.payload[SHEET_TABS.RECONCILIATIONS] || [],
@@ -126,7 +126,7 @@ export function AppProvider({ children }) {
     return {
       [SHEET_TABS.META]: [{ ...s.meta, lastSaved: new Date().toISOString() }],
       [SHEET_TABS.ACCOUNTS]: s.accounts,
-      [SHEET_TABS.TRANSACTIONS]: s.transactions,
+      transactions: s.transactions,
       [SHEET_TABS.PAYEES]: s.payees,
       [SHEET_TABS.CATEGORIES]: s.categories,
       [SHEET_TABS.RECONCILIATIONS]: s.reconciliations,
@@ -178,7 +178,7 @@ export function AppProvider({ children }) {
       await writeAllTabs(id, {
         [SHEET_TABS.META]: [meta],
         [SHEET_TABS.ACCOUNTS]: [],
-        [SHEET_TABS.TRANSACTIONS]: [],
+        transactions: [],
         [SHEET_TABS.PAYEES]: [],
         [SHEET_TABS.CATEGORIES]: [],
         [SHEET_TABS.RECONCILIATIONS]: [],

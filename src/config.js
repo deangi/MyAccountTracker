@@ -16,7 +16,6 @@ export const APP_TITLE = 'MyAccountTracker';
 export const SHEET_TABS = {
   META: '_meta',
   ACCOUNTS: 'accounts',
-  TRANSACTIONS: 'transactions',
   PAYEES: 'payees',
   CATEGORIES: 'categories',
   RECONCILIATIONS: 'reconciliations',
@@ -25,8 +24,17 @@ export const SHEET_TABS = {
 export const SHEET_HEADERS = {
   _meta: ['title', 'owner', 'lastSaved', 'version'],
   accounts: ['id', 'name', 'nickname', 'address', 'phone', 'webAddress', 'type', 'createdAt'],
-  transactions: ['id', 'accountId', 'date', 'payee', 'description', 'payment', 'deposit', 'category', 'cleared', 'reconciliationId'],
   payees: ['id', 'name'],
   categories: ['id', 'name'],
   reconciliations: ['id', 'accountId', 'date', 'statementOpeningBalance', 'statementClosingBalance', 'transactionIds'],
 };
+
+export const TXN_TAB_PREFIX = 'txn_';
+
+export const TRANSACTION_HEADERS = ['id', 'accountId', 'date', 'payee', 'description', 'payment', 'deposit', 'category', 'cleared', 'reconciliationId'];
+
+export function sanitizeTabName(name) {
+  const clean = name.replace(/[\\/*?[\]]/g, '');
+  const maxNameLen = 100 - TXN_TAB_PREFIX.length;
+  return clean.slice(0, maxNameLen);
+}

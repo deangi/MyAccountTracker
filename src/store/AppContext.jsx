@@ -2,7 +2,7 @@ import { createContext, useContext, useReducer, useCallback, useEffect, useRef }
 import { readAllTabs, writeAllTabs, createSpreadsheet } from '../services/googleSheets';
 import { initAutoSave, markDirty, markClean, getAutoSaveStatus, onStatusChange } from '../services/autoSave';
 import { generateUUID } from '../utils/uuid';
-import { SHEET_TABS } from '../config';
+import { SHEET_TABS, APP_TITLE } from '../config';
 
 const AppContext = createContext(null);
 
@@ -135,10 +135,18 @@ export function AppProvider({ children }) {
 
   const save = useCallback(async () => {
     const s = stateRef.current;
-    if (!s.spreadsheetId || !s.isAuthenticated) return;
+    if (!s.isAuthenticated) return;
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
-      await writeAllTabs(s.spreadsheetId, getAppData());
+      let id = s.spreadsheetId;
+      if (!id) {
+        const title = s.meta.title || APP_TITLE;
+        id = await createSpreadsheet(title);
+        dispatch({ type: 'SET_SPREADSHEET', payload: { id, title } });
+        dispatch({ type: 'SET_META', payload: { title } });
+        localStorage.setItem('defaultSpreadsheetId', id);
+      }
+      await writeAllTabs(id, getAppData());
       markClean();
       dispatch({ type: 'SET_META', payload: { lastSaved: new Date().toISOString() } });
     } catch (err) {

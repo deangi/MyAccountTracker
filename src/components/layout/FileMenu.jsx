@@ -82,11 +82,11 @@ export default function FileMenu({ anchorEl, open, onClose }) {
           <ListItemIcon><FolderOpen /></ListItemIcon>
           <ListItemText>Open</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleSave} disabled={!state.isAuthenticated || !state.spreadsheetId}>
+        <MenuItem onClick={handleSave} disabled={!state.isAuthenticated}>
           <ListItemIcon><Save /></ListItemIcon>
           <ListItemText>Save</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleSaveAs} disabled={!state.isAuthenticated || !state.spreadsheetId}>
+        <MenuItem onClick={handleSaveAs} disabled={!state.isAuthenticated}>
           <ListItemIcon><SaveAs /></ListItemIcon>
           <ListItemText>Save As</ListItemText>
         </MenuItem>

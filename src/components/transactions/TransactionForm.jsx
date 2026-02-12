@@ -6,6 +6,23 @@ import {
 import { useApp } from '../../store/AppContext';
 import { toISODate } from '../../utils/formatters';
 
+const moneyRegex = /^\d+(\.\d{1,2})?$/;
+
+let lastUsedDate = null;
+
+function validateMoney(value) {
+  if (value === '') return '';
+  if (!moneyRegex.test(value)) return 'Enter a valid dollar amount (e.g. 10.50)';
+  return '';
+}
+
+function validateDate(value) {
+  if (!value) return 'Date is required';
+  const d = new Date(value + 'T00:00:00');
+  if (isNaN(d.getTime())) return 'Enter a valid date';
+  return '';
+}
+
 export default function TransactionForm({ open, onClose, transaction, accountId }) {
   const { state, dispatch, generateUUID } = useApp();
   const isEdit = !!transaction;
@@ -13,6 +30,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
   const [form, setForm] = useState({
     date: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
   });
+  const [errors, setErrors] = useState({ payment: '', deposit: '', date: '' });
 
   useEffect(() => {
     if (transaction) {
@@ -27,19 +45,34 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
       });
     } else {
       setForm({
-        date: toISODate(new Date().toISOString()),
+        date: lastUsedDate || toISODate(new Date().toISOString()),
         payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
       });
     }
+    setErrors({ payment: '', deposit: '', date: '' });
   }, [transaction, open]);
 
   const handleChange = (field) => (e) => {
     const value = field === 'cleared' ? e.target.checked : e.target.value;
     setForm((prev) => ({ ...prev, [field]: value }));
+
+    if (field === 'payment' || field === 'deposit') {
+      setErrors((prev) => ({ ...prev, [field]: validateMoney(value) }));
+    }
+    if (field === 'date') {
+      setErrors((prev) => ({ ...prev, date: validateDate(value) }));
+    }
   };
 
   const handleSubmit = () => {
-    if (!form.date) return;
+    const paymentErr = validateMoney(form.payment);
+    const depositErr = validateMoney(form.deposit);
+    const dateErr = validateDate(form.date);
+
+    if (paymentErr || depositErr || dateErr) {
+      setErrors({ payment: paymentErr, deposit: depositErr, date: dateErr });
+      return;
+    }
 
     const data = {
       ...form,
@@ -64,6 +97,8 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
         },
       });
 
+      lastUsedDate = form.date;
+
       // Auto-add payee if new
       if (form.payee && !state.payees.find((p) => p.name === form.payee)) {
         dispatch({ type: 'ADD_PAYEE', payload: { id: generateUUID(), name: form.payee } });
@@ -86,6 +121,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
         <TextField
           margin="dense" label="Date" type="date" fullWidth required
           value={form.date} onChange={handleChange('date')}
+          error={!!errors.date} helperText={errors.date}
           slotProps={{ inputLabel: { shrink: true } }}
         />
         <Autocomplete
@@ -102,13 +138,15 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
           value={form.description} onChange={handleChange('description')}
         />
         <TextField
-          margin="dense" label="Payment (money out)" type="number" fullWidth
+          margin="dense" label="Payment (money out)" fullWidth
           value={form.payment} onChange={handleChange('payment')}
+          error={!!errors.payment} helperText={errors.payment}
           slotProps={{ input: { inputProps: { min: 0, step: '0.01' } } }}
         />
         <TextField
-          margin="dense" label="Deposit (money in)" type="number" fullWidth
+          margin="dense" label="Deposit (money in)" fullWidth
           value={form.deposit} onChange={handleChange('deposit')}
+          error={!!errors.deposit} helperText={errors.deposit}
           slotProps={{ input: { inputProps: { min: 0, step: '0.01' } } }}
         />
         <Autocomplete

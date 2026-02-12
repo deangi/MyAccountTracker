@@ -9,7 +9,7 @@ import { useApp } from '../../store/AppContext';
 import { APP_TITLE } from '../../config';
 
 export default function AppBarComponent({ onMenuClick }) {
-  const { state } = useApp();
+  const { state, save } = useApp();
   const [fileMenuAnchor, setFileMenuAnchor] = useState(null);
 
   const statusText = state.saveStatus.hasUnsavedChanges
@@ -59,7 +59,11 @@ export default function AppBarComponent({ onMenuClick }) {
             size="small"
             color={state.saveStatus.hasUnsavedChanges ? 'warning' : 'success'}
             variant="outlined"
-            sx={{ mr: 2, color: 'inherit', borderColor: 'rgba(255,255,255,0.5)' }}
+            {...(state.saveStatus.hasUnsavedChanges && { onClick: () => save() })}
+            sx={{
+              mr: 2, color: 'inherit', borderColor: 'rgba(255,255,255,0.5)',
+              ...(state.saveStatus.hasUnsavedChanges && { cursor: 'pointer' }),
+            }}
           />
         )}
 

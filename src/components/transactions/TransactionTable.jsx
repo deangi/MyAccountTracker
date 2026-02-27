@@ -120,7 +120,9 @@ export default function TransactionTable({ accountId }) {
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
-                <Typography variant="caption" color="text.secondary">{formatDate(txn.date)}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {formatDate(txn.date)}{txn.checkNum ? ` · ${txn.checkNum}` : ''}
+                </Typography>
                 <Typography variant="caption">Bal: {formatCurrency(txn.balance)}</Typography>
               </Box>
               {txn.category && <Chip label={txn.category} size="small" sx={{ mt: 0.5 }} />}
@@ -178,6 +180,9 @@ export default function TransactionTable({ accountId }) {
               <TableCell sx={{ cursor: 'pointer' }} onClick={() => handleSort('date')}>
                 Date {sortField === 'date' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
               </TableCell>
+              <TableCell sx={{ cursor: 'pointer' }} onClick={() => handleSort('checkNum')}>
+                Chk# {sortField === 'checkNum' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+              </TableCell>
               <TableCell sx={{ cursor: 'pointer' }} onClick={() => handleSort('payee')}>
                 Payee {sortField === 'payee' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
               </TableCell>
@@ -204,6 +209,7 @@ export default function TransactionTable({ accountId }) {
                   />
                 </TableCell>
                 <TableCell>{formatDate(txn.date)}</TableCell>
+                <TableCell>{txn.checkNum}</TableCell>
                 <TableCell>{txn.payee}</TableCell>
                 <TableCell>{txn.description}</TableCell>
                 <TableCell align="right" sx={{ color: 'error.main' }}>
@@ -222,7 +228,7 @@ export default function TransactionTable({ accountId }) {
             ))}
             {withBalance.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">No transactions yet</Typography>
                 </TableCell>
               </TableRow>

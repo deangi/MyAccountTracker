@@ -37,10 +37,10 @@ export default function FileMenu({ anchorEl, open, onClose }) {
   };
 
   const handleOpenPicker = async () => {
+    setOpenDialog(false);
     try {
       const id = await openPicker();
       if (id) {
-        setOpenDialog(false);
         await load(id);
       }
     } catch (err) {

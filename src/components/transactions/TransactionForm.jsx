@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Autocomplete, FormControlLabel, Checkbox,
@@ -26,16 +26,21 @@ function validateDate(value) {
 export default function TransactionForm({ open, onClose, transaction, accountId }) {
   const { state, dispatch, generateUUID } = useApp();
   const isEdit = !!transaction;
+  const dateInputRef = useRef(null); // DOM ref for the native <input>
+  const latestDateRef = useRef('');  // always-current date, updated synchronously
 
   const [form, setForm] = useState({
-    date: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
+    date: '', checkNum: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
   });
   const [errors, setErrors] = useState({ payment: '', deposit: '', date: '' });
 
   useEffect(() => {
     if (transaction) {
+      const date = transaction.date || '';
+      latestDateRef.current = date;
       setForm({
-        date: transaction.date || '',
+        date,
+        checkNum: transaction.checkNum || '',
         payee: transaction.payee || '',
         description: transaction.description || '',
         payment: transaction.payment || '',
@@ -44,9 +49,11 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
         cleared: transaction.cleared === 'TRUE' || transaction.cleared === true,
       });
     } else {
+      const date = lastUsedDate || toISODate(new Date().toISOString());
+      latestDateRef.current = date;
       setForm({
-        date: lastUsedDate || toISODate(new Date().toISOString()),
-        payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
+        date,
+        checkNum: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
       });
     }
     setErrors({ payment: '', deposit: '', date: '' });
@@ -60,14 +67,19 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
       setErrors((prev) => ({ ...prev, [field]: validateMoney(value) }));
     }
     if (field === 'date') {
+      latestDateRef.current = value; // sync immediately — don't wait for re-render
       setErrors((prev) => ({ ...prev, date: validateDate(value) }));
     }
   };
 
   const handleSubmit = () => {
+    // latestDateRef is kept in sync by onChange and onBlur, so it always
+    // holds the current date value regardless of React state batching timing.
+    const dateValue = latestDateRef.current;
+
     const paymentErr = validateMoney(form.payment);
     const depositErr = validateMoney(form.deposit);
-    const dateErr = validateDate(form.date);
+    const dateErr = validateDate(dateValue);
 
     if (paymentErr || depositErr || dateErr) {
       setErrors({ payment: paymentErr, deposit: depositErr, date: dateErr });
@@ -76,6 +88,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
 
     const data = {
       ...form,
+      date: dateValue,
       cleared: form.cleared ? 'TRUE' : 'FALSE',
       payment: form.payment || '',
       deposit: form.deposit || '',
@@ -119,10 +132,25 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
       <DialogTitle>{isEdit ? 'Edit Transaction' : 'Add Transaction'}</DialogTitle>
       <DialogContent>
         <TextField
+          inputRef={dateInputRef}
           margin="dense" label="Date" type="date" fullWidth required
-          value={form.date} onChange={handleChange('date')}
+          value={form.date}
+          onChange={handleChange('date')}
+          onBlur={(e) => {
+            if (e.target.value) latestDateRef.current = e.target.value;
+          }}
           error={!!errors.date} helperText={errors.date}
           slotProps={{ inputLabel: { shrink: true } }}
+        />
+        <Autocomplete
+          freeSolo
+          options={['DEP', 'ETF', 'TXFR']}
+          value={form.checkNum}
+          onInputChange={(_, value) => setForm((prev) => ({ ...prev, checkNum: value }))}
+          renderInput={(params) => (
+            <TextField {...params} margin="dense" label="Check # / Type" fullWidth
+              placeholder="Check number, DEP, ETF, or TXFR" />
+          )}
         />
         <Autocomplete
           freeSolo

@@ -12,6 +12,7 @@ export const DISCOVERY_DOCS = [
 
 export const AUTO_SAVE_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 export const APP_TITLE = 'MyAccountTracker';
+export const APP_VERSION = '2026.02.26';
 
 export const SHEET_TABS = {
   META: '_meta',
@@ -31,7 +32,7 @@ export const SHEET_HEADERS = {
 
 export const TXN_TAB_PREFIX = 'txn_';
 
-export const TRANSACTION_HEADERS = ['id', 'accountId', 'date', 'payee', 'description', 'payment', 'deposit', 'category', 'cleared', 'reconciliationId'];
+export const TRANSACTION_HEADERS = ['id', 'accountId', 'date', 'checkNum', 'payee', 'description', 'payment', 'deposit', 'category', 'cleared', 'reconciliationId'];
 
 export function sanitizeTabName(name) {
   const clean = name.replace(/[\\/*?[\]]/g, '');

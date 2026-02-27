@@ -6,7 +6,7 @@ import { Menu as MenuIcon, InsertDriveFile } from '@mui/icons-material';
 import LoginButton from '../auth/LoginButton';
 import FileMenu from './FileMenu';
 import { useApp } from '../../store/AppContext';
-import { APP_TITLE } from '../../config';
+import { APP_TITLE, APP_VERSION } from '../../config';
 
 export default function AppBarComponent({ onMenuClick }) {
   const { state, save } = useApp();
@@ -27,6 +27,9 @@ export default function AppBarComponent({ onMenuClick }) {
 
         <Typography variant="h6" noWrap sx={{ flexGrow: 0, mr: 2 }}>
           {APP_TITLE}
+          <Typography component="span" variant="caption" sx={{ ml: 1, opacity: 0.7 }}>
+            v{APP_VERSION}
+          </Typography>
         </Typography>
 
         {state.isAuthenticated && (

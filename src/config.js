@@ -12,7 +12,7 @@ export const DISCOVERY_DOCS = [
 
 export const AUTO_SAVE_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 export const APP_TITLE = 'MyAccountTracker';
-export const APP_VERSION = '2026.02.26';
+export const APP_VERSION = '2026.02.27';
 
 export const SHEET_TABS = {
   META: '_meta',

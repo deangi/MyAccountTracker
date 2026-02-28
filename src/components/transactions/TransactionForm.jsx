@@ -28,6 +28,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
   const isEdit = !!transaction;
   const dateInputRef = useRef(null); // DOM ref for the native <input>
   const latestDateRef = useRef('');  // always-current date, updated synchronously
+  const autoFilledPayeeRef = useRef(''); // tracks last payee that triggered auto-fill
 
   const [form, setForm] = useState({
     date: '', checkNum: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
@@ -35,6 +36,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
   const [errors, setErrors] = useState({ payment: '', deposit: '', date: '' });
 
   useEffect(() => {
+    autoFilledPayeeRef.current = '';
     if (transaction) {
       const date = transaction.date || '';
       latestDateRef.current = date;
@@ -58,6 +60,23 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
     }
     setErrors({ payment: '', deposit: '', date: '' });
   }, [transaction, open]);
+
+  const autoFillFromPayee = (payeeName) => {
+    if (!payeeName || isEdit || payeeName === autoFilledPayeeRef.current) return;
+    autoFilledPayeeRef.current = payeeName;
+    const match = state.transactions
+      .filter((t) => t.payee === payeeName)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (match) {
+      setForm((f) => ({
+        ...f,
+        description: match.description || '',
+        payment: match.payment || '',
+        deposit: match.deposit || '',
+        category: match.category || '',
+      }));
+    }
+  };
 
   const handleChange = (field) => (e) => {
     const value = field === 'cleared' ? e.target.checked : e.target.value;
@@ -144,12 +163,12 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
         />
         <Autocomplete
           freeSolo
-          options={['DEP', 'ETF', 'TXFR']}
+          options={['DEP', 'EFT', 'TXFR']}
           value={form.checkNum}
           onInputChange={(_, value) => setForm((prev) => ({ ...prev, checkNum: value }))}
           renderInput={(params) => (
             <TextField {...params} margin="dense" label="Check # / Type" fullWidth
-              placeholder="Check number, DEP, ETF, or TXFR" />
+              placeholder="Check number, DEP, EFT, or TXFR" />
           )}
         />
         <Autocomplete
@@ -157,8 +176,18 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
           options={payeeNames}
           value={form.payee}
           onInputChange={(_, value) => setForm((prev) => ({ ...prev, payee: value }))}
+          onChange={(_, value) => {
+            const name = typeof value === 'string' ? value : '';
+            autoFillFromPayee(name);
+          }}
           renderInput={(params) => (
-            <TextField {...params} margin="dense" label="Payee" fullWidth />
+            <TextField
+              {...params}
+              margin="dense"
+              label="Payee"
+              fullWidth
+              onBlur={(e) => autoFillFromPayee(e.target.value)}
+            />
           )}
         />
         <TextField

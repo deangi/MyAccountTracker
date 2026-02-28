@@ -37,9 +37,9 @@ function reducer(state, action) {
         ...state,
         meta: action.payload[SHEET_TABS.META]?.[0] || initialState.meta,
         accounts: action.payload[SHEET_TABS.ACCOUNTS] || [],
-        transactions: action.payload.transactions || [],
-        payees: action.payload[SHEET_TABS.PAYEES] || [],
-        categories: action.payload[SHEET_TABS.CATEGORIES] || [],
+        transactions: (action.payload.transactions || []).slice().sort((a, b) => a.date.localeCompare(b.date)),
+        payees: (action.payload[SHEET_TABS.PAYEES] || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
+        categories: (action.payload[SHEET_TABS.CATEGORIES] || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
         reconciliations: action.payload[SHEET_TABS.RECONCILIATIONS] || [],
         loading: false,
       };
@@ -74,23 +74,23 @@ function reducer(state, action) {
 
     // Transactions
     case 'ADD_TRANSACTION':
-      return { ...state, transactions: [...state.transactions, action.payload] };
+      return { ...state, transactions: [...state.transactions, action.payload].sort((a, b) => a.date.localeCompare(b.date)) };
     case 'UPDATE_TRANSACTION':
-      return { ...state, transactions: state.transactions.map((t) => (t.id === action.payload.id ? action.payload : t)) };
+      return { ...state, transactions: state.transactions.map((t) => (t.id === action.payload.id ? action.payload : t)).sort((a, b) => a.date.localeCompare(b.date)) };
     case 'DELETE_TRANSACTION':
       return { ...state, transactions: state.transactions.filter((t) => t.id !== action.payload) };
     case 'IMPORT_TRANSACTIONS':
-      return { ...state, transactions: [...state.transactions, ...action.payload] };
+      return { ...state, transactions: [...state.transactions, ...action.payload].sort((a, b) => a.date.localeCompare(b.date)) };
 
     // Payees
     case 'ADD_PAYEE':
-      return { ...state, payees: [...state.payees, action.payload] };
+      return { ...state, payees: [...state.payees, action.payload].sort((a, b) => a.name.localeCompare(b.name)) };
     case 'DELETE_PAYEE':
       return { ...state, payees: state.payees.filter((p) => p.id !== action.payload) };
 
     // Categories
     case 'ADD_CATEGORY':
-      return { ...state, categories: [...state.categories, action.payload] };
+      return { ...state, categories: [...state.categories, action.payload].sort((a, b) => a.name.localeCompare(b.name)) };
     case 'DELETE_CATEGORY':
       return { ...state, categories: state.categories.filter((c) => c.id !== action.payload) };
 

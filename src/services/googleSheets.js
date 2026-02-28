@@ -173,7 +173,12 @@ export async function writeAllTabs(spreadsheetId, appData) {
   // 4. Write fixed tabs
   const updateData = [];
   for (const [tabName, headers] of Object.entries(SHEET_HEADERS)) {
-    const records = appData[tabName] || [];
+    let records = appData[tabName] || [];
+    if (tabName === SHEET_TABS.PAYEES || tabName === SHEET_TABS.CATEGORIES) {
+      records = records.slice().sort((a, b) => a.name.localeCompare(b.name));
+    } else if (tabName === SHEET_TABS.RECONCILIATIONS) {
+      records = records.slice().sort((a, b) => b.date.localeCompare(a.date));
+    }
     const rows = [headers];
     records.forEach((record) => {
       rows.push(headers.map((h) => record[h] ?? ''));
@@ -194,7 +199,7 @@ export async function writeAllTabs(spreadsheetId, appData) {
   }
 
   for (let i = 0; i < accounts.length; i++) {
-    const acctTxns = txnByAccount.get(accounts[i].id) || [];
+    const acctTxns = (txnByAccount.get(accounts[i].id) || []).slice().sort((a, b) => b.date.localeCompare(a.date));
     const rows = [TRANSACTION_HEADERS];
     acctTxns.forEach((txn) => {
       rows.push(TRANSACTION_HEADERS.map((h) => txn[h] ?? ''));

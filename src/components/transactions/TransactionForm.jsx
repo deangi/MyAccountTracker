@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Button, Autocomplete, FormControlLabel, Checkbox,
+  TextField, Button, Autocomplete, FormControlLabel, Checkbox, MenuItem,
 } from '@mui/material';
 import { useApp } from '../../store/AppContext';
 import { toISODate } from '../../utils/formatters';
@@ -31,7 +31,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
   const autoFilledPayeeRef = useRef(''); // tracks last payee that triggered auto-fill
 
   const [form, setForm] = useState({
-    date: '', checkNum: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
+    date: '', checkNum: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false, accountId: '',
   });
   const [errors, setErrors] = useState({ payment: '', deposit: '', date: '' });
 
@@ -49,6 +49,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
         deposit: transaction.deposit || '',
         category: transaction.category || '',
         cleared: transaction.cleared === 'TRUE' || transaction.cleared === true,
+        accountId: transaction.accountId || '',
       });
     } else {
       const date = lastUsedDate || toISODate(new Date().toISOString());
@@ -114,9 +115,15 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
     };
 
     if (isEdit) {
+      const accountChanged = form.accountId && form.accountId !== transaction.accountId;
       dispatch({
         type: 'UPDATE_TRANSACTION',
-        payload: { ...transaction, ...data },
+        payload: {
+          ...transaction,
+          ...data,
+          accountId: form.accountId || transaction.accountId,
+          ...(accountChanged && { reconciliationId: '', cleared: 'FALSE' }),
+        },
       });
     } else {
       dispatch({
@@ -150,6 +157,17 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{isEdit ? 'Edit Transaction' : 'Add Transaction'}</DialogTitle>
       <DialogContent>
+        {isEdit && (
+          <TextField
+            select fullWidth margin="dense" label="Account"
+            value={form.accountId}
+            onChange={handleChange('accountId')}
+          >
+            {state.accounts.map((a) => (
+              <MenuItem key={a.id} value={a.id}>{a.nickname || a.name}</MenuItem>
+            ))}
+          </TextField>
+        )}
         <TextField
           inputRef={dateInputRef}
           margin="dense" label="Date" type="date" fullWidth required

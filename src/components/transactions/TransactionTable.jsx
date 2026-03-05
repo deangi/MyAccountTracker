@@ -4,7 +4,7 @@ import {
   TableContainer, TableHead, TableRow, Paper, Checkbox, TextField,
   MenuItem, useMediaQuery, useTheme, Card, CardContent, Chip, Stack,
 } from '@mui/material';
-import { Add, Edit, Delete, FileDownload, FileUpload } from '@mui/icons-material';
+import { Add, Edit, Delete, FileDownload, FileUpload, DriveFileMove } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import TransactionForm from './TransactionForm';

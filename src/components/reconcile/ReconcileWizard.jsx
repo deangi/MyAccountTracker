@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Box, Typography, TextField, Button, Stepper, Step, StepLabel,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -18,11 +18,19 @@ export default function ReconcileWizard() {
   const [closingBalance, setClosingBalance] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
 
+  useEffect(() => {
+    if (!accountId) return;
+    const prev = state.reconciliations
+      .filter((r) => r.accountId === accountId)
+      .sort((a, b) => (a.date || '') < (b.date || '') ? 1 : (a.date || '') > (b.date || '') ? -1 : 0)[0];
+    setOpeningBalance(prev ? prev.statementClosingBalance : '');
+  }, [accountId, state.reconciliations]);
+
   const unclearedTransactions = useMemo(() => {
     if (!accountId) return [];
     return state.transactions
       .filter((t) => t.accountId === accountId && t.cleared !== 'TRUE')
-      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      .sort((a, b) => (a.date || '') < (b.date || '') ? -1 : (a.date || '') > (b.date || '') ? 1 : 0);
   }, [state.transactions, accountId]);
 
   const selectedTotal = useMemo(() => {
@@ -129,8 +137,7 @@ export default function ReconcileWizard() {
           <Box sx={{ mb: 2 }}>
             <Typography>
               Opening Balance: <strong>{formatCurrency(openingBalance)}</strong>
-              {' | '}Selected Total: <strong>{formatCurrency(selectedTotal)}</strong>
-              {' | '}Expected: <strong>{formatCurrency(expectedBalance)}</strong>
+              {' | '}Cleared Balance: <strong>{formatCurrency(expectedBalance)}</strong>
               {' | '}Statement Closing: <strong>{formatCurrency(closingBalance)}</strong>
             </Typography>
             <Typography color={isBalanced ? 'success.main' : 'error.main'}>

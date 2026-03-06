@@ -151,6 +151,17 @@ export function AppProvider({ children }) {
       dispatch({ type: 'SET_META', payload: { lastSaved: new Date().toISOString() } });
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message });
+      // Save failed — offer a local JSON download so no changes are lost
+      try {
+        const data = getAppData();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'MyAccountTracker-backup-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch { /* ignore download errors */ }
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }

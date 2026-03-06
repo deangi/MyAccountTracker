@@ -2,6 +2,7 @@ import { GOOGLE_CLIENT_ID, SCOPES } from '../config';
 
 let tokenClient = null;
 let accessToken = null;
+let tokenAcquiredAt = null;
 let onAuthChange = null;
 
 export function getAccessToken() {
@@ -36,6 +37,7 @@ export function initAuth() {
             return;
           }
           accessToken = response.access_token;
+          tokenAcquiredAt = Date.now();
           onAuthChange?.(true);
         },
       });
@@ -68,4 +70,8 @@ export function signOut() {
 
 export function isSignedIn() {
   return !!accessToken;
+}
+
+export function getTokenAcquiredAt() {
+  return tokenAcquiredAt;
 }

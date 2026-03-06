@@ -11,8 +11,10 @@ export const DISCOVERY_DOCS = [
 ];
 
 export const AUTO_SAVE_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+export const TOKEN_EXPIRY_WARNING_MS = 50 * 60 * 1000; // warn at 50 min (token expires at 60 min)
+export const DIRTY_WARNING_MS = 10 * 60 * 1000;        // warn after 10 min of unsaved changes
 export const APP_TITLE = 'MyAccountTracker';
-export const APP_VERSION = '2026.03.04';
+export const APP_VERSION = '2026.03.05';
 
 export const SHEET_TABS = {
   META: '_meta',

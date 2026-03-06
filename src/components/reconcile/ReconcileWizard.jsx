@@ -24,7 +24,25 @@ export default function ReconcileWizard() {
       .filter((r) => r.accountId === accountId)
       .sort((a, b) => (a.date || '') < (b.date || '') ? 1 : (a.date || '') > (b.date || '') ? -1 : 0)[0];
     setOpeningBalance(prev ? prev.statementClosingBalance : '');
+
+    // Restore any saved draft for this account
+    try {
+      const draft = JSON.parse(localStorage.getItem('reconcile_draft_' + accountId));
+      if (draft) {
+        if (draft.statementDate) setStatementDate(draft.statementDate);
+        if (draft.closingBalance) setClosingBalance(draft.closingBalance);
+      }
+    } catch { /* ignore */ }
   }, [accountId, state.reconciliations]);
+
+  // Persist draft whenever setup fields change
+  useEffect(() => {
+    if (!accountId) return;
+    localStorage.setItem(
+      'reconcile_draft_' + accountId,
+      JSON.stringify({ statementDate, closingBalance })
+    );
+  }, [accountId, statementDate, closingBalance]);
 
   const unclearedTransactions = useMemo(() => {
     if (!accountId) return [];
@@ -75,6 +93,9 @@ export default function ReconcileWizard() {
         reconciliationId,
       })),
     });
+
+    // Clear saved draft for this account
+    localStorage.removeItem('reconcile_draft_' + accountId);
 
     // Reset wizard
     setActiveStep(0);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   AppBar as MuiAppBar, Toolbar, Typography, IconButton, Box, Chip,
 } from '@mui/material';
@@ -6,16 +6,28 @@ import { Menu as MenuIcon, InsertDriveFile } from '@mui/icons-material';
 import LoginButton from '../auth/LoginButton';
 import FileMenu from './FileMenu';
 import { useApp } from '../../store/AppContext';
-import { APP_TITLE, APP_VERSION } from '../../config';
+import { APP_TITLE, APP_VERSION, TOKEN_EXPIRY_WARNING_MS, DIRTY_WARNING_MS } from '../../config';
+import { getTokenAcquiredAt } from '../../services/googleAuth';
 
 export default function AppBarComponent({ onMenuClick }) {
   const { state, save } = useApp();
   const [fileMenuAnchor, setFileMenuAnchor] = useState(null);
 
-  const statusText = state.saveStatus.hasUnsavedChanges
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const { hasUnsavedChanges, dirtySince, lastSaveTime } = state.saveStatus;
+  const tokenAge = now - (getTokenAcquiredAt() ?? now);
+  const dirtyAge = dirtySince ? now - dirtySince : 0;
+  const isUrgent = hasUnsavedChanges && (tokenAge > TOKEN_EXPIRY_WARNING_MS || dirtyAge > DIRTY_WARNING_MS);
+
+  const statusText = hasUnsavedChanges
     ? 'Unsaved changes'
-    : state.saveStatus.lastSaveTime
-    ? `Saved ${new Date(state.saveStatus.lastSaveTime).toLocaleTimeString()}`
+    : lastSaveTime
+    ? `Saved ${new Date(lastSaveTime).toLocaleTimeString()}`
     : '';
 
   return (
@@ -60,12 +72,17 @@ export default function AppBarComponent({ onMenuClick }) {
           <Chip
             label={statusText}
             size="small"
-            color={state.saveStatus.hasUnsavedChanges ? 'warning' : 'success'}
+            color={isUrgent ? 'error' : hasUnsavedChanges ? 'warning' : 'success'}
             variant="outlined"
-            {...(state.saveStatus.hasUnsavedChanges && { onClick: () => save() })}
+            {...(hasUnsavedChanges && { onClick: () => save() })}
             sx={{
               mr: 2, color: 'inherit', borderColor: 'rgba(255,255,255,0.5)',
-              ...(state.saveStatus.hasUnsavedChanges && { cursor: 'pointer' }),
+              ...(hasUnsavedChanges && { cursor: 'pointer' }),
+              '@keyframes blink': {
+                '0%, 100%': { opacity: 1 },
+                '50%': { opacity: 0.25 },
+              },
+              ...(isUrgent && { animation: 'blink 1.2s ease-in-out infinite' }),
             }}
           />
         )}

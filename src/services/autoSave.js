@@ -4,6 +4,7 @@ let saveTimer = null;
 let saveFn = null;
 let lastSaveTime = null;
 let hasUnsavedChanges = false;
+let dirtySince = null;
 let listeners = [];
 
 export function initAutoSave(onSave) {
@@ -19,6 +20,7 @@ export function initAutoSave(onSave) {
 }
 
 export function markDirty() {
+  if (!hasUnsavedChanges) dirtySince = Date.now();
   hasUnsavedChanges = true;
   resetTimer();
   notifyListeners();
@@ -26,6 +28,7 @@ export function markDirty() {
 
 export function markClean() {
   hasUnsavedChanges = false;
+  dirtySince = null;
   lastSaveTime = new Date();
   notifyListeners();
 }
@@ -33,6 +36,7 @@ export function markClean() {
 export function getAutoSaveStatus() {
   return {
     hasUnsavedChanges,
+    dirtySince,
     lastSaveTime,
   };
 }

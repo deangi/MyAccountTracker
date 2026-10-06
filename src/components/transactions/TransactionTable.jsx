@@ -76,17 +76,13 @@ export default function TransactionTable({ accountId }) {
     setFormOpen(true);
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Delete this transaction?')) {
-      dispatch({ type: 'DELETE_TRANSACTION', payload: id });
+  const handleDelete = (transaction) => {
+    const message = transaction.transferId
+      ? 'Delete both sides of this transfer?'
+      : 'Delete this transaction?';
+    if (window.confirm(message)) {
+      dispatch({ type: transaction.transferId ? 'DELETE_TRANSFER' : 'DELETE_TRANSACTION', payload: transaction.transferId || transaction.id });
     }
-  };
-
-  const handleClearedToggle = (txn) => {
-    dispatch({
-      type: 'UPDATE_TRANSACTION',
-      payload: { ...txn, cleared: txn.cleared === 'TRUE' ? 'FALSE' : 'TRUE' },
-    });
   };
 
   const handleAdd = () => {
@@ -128,11 +124,12 @@ export default function TransactionTable({ accountId }) {
               {txn.category && <Chip label={txn.category} size="small" sx={{ mt: 0.5 }} />}
               <Box sx={{ mt: 0.5 }}>
                 <IconButton size="small" onClick={() => handleEdit(txn)}><Edit fontSize="small" /></IconButton>
-                <IconButton size="small" onClick={() => handleDelete(txn.id)}><Delete fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={() => handleDelete(txn)}><Delete fontSize="small" /></IconButton>
                 <Checkbox
                   size="small"
                   checked={txn.cleared === 'TRUE'}
-                  onChange={() => handleClearedToggle(txn)}
+                  disabled
+                  inputProps={{ 'aria-label': 'Reconciliation status; managed by Reconcile' }}
                 />
               </Box>
             </CardContent>
@@ -205,7 +202,8 @@ export default function TransactionTable({ accountId }) {
                   <Checkbox
                     size="small"
                     checked={txn.cleared === 'TRUE'}
-                    onChange={() => handleClearedToggle(txn)}
+                    disabled
+                    inputProps={{ 'aria-label': 'Reconciliation status; managed by Reconcile' }}
                   />
                 </TableCell>
                 <TableCell>{formatDate(txn.date)}</TableCell>
@@ -222,7 +220,7 @@ export default function TransactionTable({ accountId }) {
                 <TableCell>{txn.category}</TableCell>
                 <TableCell align="center">
                   <IconButton size="small" onClick={() => handleEdit(txn)}><Edit fontSize="small" /></IconButton>
-                  <IconButton size="small" onClick={() => handleDelete(txn.id)}><Delete fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => handleDelete(txn)}><Delete fontSize="small" /></IconButton>
                 </TableCell>
               </TableRow>
             ))}

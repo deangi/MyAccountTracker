@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { useApp } from '../../store/AppContext';
 
-const ACCOUNT_TYPES = ['checking', 'savings'];
+const ACCOUNT_TYPES = ['checking', 'savings', 'credit card', 'loan', 'equity'];
 
 export default function AccountForm({ open, onClose, account }) {
   const { dispatch, generateUUID } = useApp();

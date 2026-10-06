@@ -1,8 +1,9 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
 import { readAllTabs, writeAllTabs, createSpreadsheet } from '../services/googleSheets';
+import { migrateV1ToV2, synchronizeAndValidateV2Ledger } from '../services/formatMigration';
 import { initAutoSave, markDirty, markClean, getAutoSaveStatus, onStatusChange } from '../services/autoSave';
 import { generateUUID } from '../utils/uuid';
-import { SHEET_TABS, APP_TITLE } from '../config';
+import { CURRENT_SHEET_FORMAT_VERSION, SHEET_TABS, APP_TITLE } from '../config';
 
 const AppContext = createContext(null);
 
@@ -10,12 +11,13 @@ const initialState = {
   isAuthenticated: false,
   spreadsheetId: localStorage.getItem('defaultSpreadsheetId') || null,
   spreadsheetTitle: '',
-  meta: { title: '', owner: '', lastSaved: '', version: '1' },
+  meta: { title: '', owner: '', lastSaved: '', version: CURRENT_SHEET_FORMAT_VERSION },
   accounts: [],
   transactions: [],
   payees: [],
   categories: [],
   reconciliations: [],
+  reconcileDrafts: [],
   selectedAccountId: null,
   loading: false,
   error: null,
@@ -41,6 +43,7 @@ function reducer(state, action) {
         payees: (action.payload[SHEET_TABS.PAYEES] || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
         categories: (action.payload[SHEET_TABS.CATEGORIES] || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
         reconciliations: action.payload[SHEET_TABS.RECONCILIATIONS] || [],
+        reconcileDrafts: action.payload[SHEET_TABS.RECONCILE_DRAFTS] || [],
         loading: false,
       };
     case 'CLEAR_DATA':
@@ -52,6 +55,7 @@ function reducer(state, action) {
         payees: [],
         categories: [],
         reconciliations: [],
+        reconcileDrafts: [],
         selectedAccountId: null,
         spreadsheetId: null,
         spreadsheetTitle: '',
@@ -69,6 +73,7 @@ function reducer(state, action) {
         ...state,
         accounts: state.accounts.filter((a) => a.id !== action.payload),
         transactions: state.transactions.filter((t) => t.accountId !== action.payload),
+        reconcileDrafts: state.reconcileDrafts.filter((draft) => draft.accountId !== action.payload),
         selectedAccountId: state.selectedAccountId === action.payload ? null : state.selectedAccountId,
       };
 
@@ -81,6 +86,25 @@ function reducer(state, action) {
       return { ...state, transactions: state.transactions.filter((t) => t.id !== action.payload) };
     case 'IMPORT_TRANSACTIONS':
       return { ...state, transactions: [...state.transactions, ...action.payload].sort((a, b) => a.date.localeCompare(b.date)) };
+    case 'ADD_TRANSFER':
+      return {
+        ...state,
+        transactions: [...state.transactions, action.payload.source, action.payload.destination]
+          .sort((a, b) => a.date.localeCompare(b.date)),
+      };
+    case 'UPDATE_TRANSFER': {
+      const { transferId, source, destination } = action.payload;
+      return {
+        ...state,
+        transactions: state.transactions
+          .map((transaction) => transaction.transferId === transferId
+            ? (transaction.id === source.id ? source : destination)
+            : transaction)
+          .sort((a, b) => a.date.localeCompare(b.date)),
+      };
+    }
+    case 'DELETE_TRANSFER':
+      return { ...state, transactions: state.transactions.filter((t) => t.transferId !== action.payload) };
 
     // Payees
     case 'ADD_PAYEE':
@@ -105,6 +129,15 @@ function reducer(state, action) {
           return update ? { ...t, ...update } : t;
         }),
       };
+    case 'SAVE_RECONCILE_DRAFT':
+      return {
+        ...state,
+        reconcileDrafts: state.reconcileDrafts.some((draft) => draft.id === action.payload.id)
+          ? state.reconcileDrafts.map((draft) => draft.id === action.payload.id ? action.payload : draft)
+          : [...state.reconcileDrafts, action.payload],
+      };
+    case 'DELETE_RECONCILE_DRAFT':
+      return { ...state, reconcileDrafts: state.reconcileDrafts.filter((draft) => draft.id !== action.payload) };
 
     case 'SET_META':
       return { ...state, meta: { ...state.meta, ...action.payload } };
@@ -130,6 +163,7 @@ export function AppProvider({ children }) {
       [SHEET_TABS.PAYEES]: s.payees,
       [SHEET_TABS.CATEGORIES]: s.categories,
       [SHEET_TABS.RECONCILIATIONS]: s.reconciliations,
+      [SHEET_TABS.RECONCILE_DRAFTS]: s.reconcileDrafts,
     };
   }, []);
 
@@ -186,7 +220,7 @@ export function AppProvider({ children }) {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
     try {
-      const meta = { title, owner, lastSaved: new Date().toISOString(), version: '1' };
+      const meta = { title, owner, lastSaved: new Date().toISOString(), version: CURRENT_SHEET_FORMAT_VERSION };
       const id = await createSpreadsheet(title);
       dispatch({ type: 'CLEAR_DATA' });
       dispatch({ type: 'SET_META', payload: meta });
@@ -201,6 +235,7 @@ export function AppProvider({ children }) {
         [SHEET_TABS.PAYEES]: [],
         [SHEET_TABS.CATEGORIES]: [],
         [SHEET_TABS.RECONCILIATIONS]: [],
+        [SHEET_TABS.RECONCILE_DRAFTS]: [],
       });
       markClean();
     } catch (err) {
@@ -227,15 +262,50 @@ export function AppProvider({ children }) {
     }
   }, [getAppData]);
 
+  const migrateToV2 = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.spreadsheetId) throw new Error('Open a Format 1 spreadsheet before converting it.');
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
+    try {
+      const result = await migrateV1ToV2({ spreadsheetId: s.spreadsheetId, data: getAppData() });
+      await load(result.targetId);
+      return result;
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message });
+      throw err;
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  }, [getAppData, load]);
+
+  const rebuildV2Ledger = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.spreadsheetId || s.meta.version !== CURRENT_SHEET_FORMAT_VERSION) throw new Error('Open a Format 2 spreadsheet before rebuilding its ledger.');
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
+    try {
+      const result = await synchronizeAndValidateV2Ledger(s.spreadsheetId);
+      await load(s.spreadsheetId);
+      return result.report;
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err.message });
+      throw err;
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  }, [load]);
+
   // Wrap dispatch to mark dirty on data changes
   const dispatchWithDirty = useCallback((action) => {
     dispatch(action);
     const dataActions = [
       'ADD_ACCOUNT', 'UPDATE_ACCOUNT', 'DELETE_ACCOUNT',
       'ADD_TRANSACTION', 'UPDATE_TRANSACTION', 'DELETE_TRANSACTION', 'IMPORT_TRANSACTIONS',
+      'ADD_TRANSFER', 'UPDATE_TRANSFER', 'DELETE_TRANSFER',
       'ADD_PAYEE', 'DELETE_PAYEE',
       'ADD_CATEGORY', 'DELETE_CATEGORY',
-      'ADD_RECONCILIATION', 'UPDATE_TRANSACTIONS_BATCH', 'SET_META',
+      'ADD_RECONCILIATION', 'UPDATE_TRANSACTIONS_BATCH', 'SAVE_RECONCILE_DRAFT', 'DELETE_RECONCILE_DRAFT', 'SET_META',
     ];
     if (dataActions.includes(action.type)) {
       markDirty();
@@ -261,6 +331,8 @@ export function AppProvider({ children }) {
     load,
     createNew,
     saveAs,
+    migrateToV2,
+    rebuildV2Ledger,
     generateUUID,
   };
 

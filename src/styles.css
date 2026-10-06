@@ -1,0 +1,7 @@
+/* Google Picker is appended outside React and defaults below MUI's fixed
+   application bar/drawer. Keep its dialog, dimmer, and iframe above the app. */
+.picker-dialog,
+.picker-dialog-bg,
+.picker-modal {
+  z-index: 2000 !important;
+}

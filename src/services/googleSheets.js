@@ -1,5 +1,5 @@
 import { getAccessToken } from './googleAuth';
-import { GOOGLE_API_KEY, SHEET_HEADERS, SHEET_TABS, TXN_TAB_PREFIX, TRANSACTION_HEADERS, sanitizeTabName } from '../config';
+import { GOOGLE_API_KEY, APP_VERSION, CURRENT_SHEET_FORMAT_VERSION, SHEET_HEADERS, SHEET_TABS, TRANSACTION_HEADERS, TXN_TAB_PREFIX, V2_LEDGER_TABS, getSheetHeadersForVersion, getSheetTabsForVersion, sanitizeTabName } from '../config';
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
@@ -21,8 +21,8 @@ async function sheetsRequest(url, options = {}) {
   return response.json();
 }
 
-export async function createSpreadsheet(title) {
-  const sheets = Object.values(SHEET_TABS).map((tabName) => ({
+export async function createSpreadsheet(title, formatVersion = CURRENT_SHEET_FORMAT_VERSION) {
+  const sheets = getSheetTabsForVersion(formatVersion).map((tabName) => ({
     properties: { title: tabName },
   }));
 
@@ -39,7 +39,7 @@ export async function createSpreadsheet(title) {
   const spreadsheetId = data.spreadsheetId;
 
   // Write headers to fixed tabs only (no transaction tabs yet)
-  const headerRequests = Object.entries(SHEET_HEADERS).map(([tabName, headers]) => ({
+  const headerRequests = Object.entries(getSheetHeadersForVersion(formatVersion)).map(([tabName, headers]) => ({
     range: `'${tabName}'!A1:${columnLetter(headers.length)}1`,
     values: [headers],
   }));
@@ -65,6 +65,35 @@ async function getSheetProperties(spreadsheetId) {
   }));
 }
 
+// Older account files predate newly-added fixed tabs. Add only missing tabs so
+// opening an existing file remains backward compatible.
+async function ensureFixedTabs(spreadsheetId, formatVersion) {
+  const headersByTab = getSheetHeadersForVersion(formatVersion);
+  const sheetProps = await getSheetProperties(spreadsheetId);
+  const existing = new Set(sheetProps.map((sheet) => sheet.title));
+  const missing = getSheetTabsForVersion(formatVersion).filter((tab) => !existing.has(tab));
+
+  if (missing.length === 0) return sheetProps;
+
+  await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests: missing.map((title) => ({ addSheet: { properties: { title } } })),
+    }),
+  });
+
+  const headerData = missing.map((tabName) => ({
+    range: `'${tabName}'!A1:${columnLetter(headersByTab[tabName].length)}1`,
+    values: [headersByTab[tabName]],
+  }));
+  await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'RAW', data: headerData }),
+  });
+
+  return getSheetProperties(spreadsheetId);
+}
+
 function parseRows(rows) {
   if (rows.length === 0) return [];
   const headers = rows[0];
@@ -78,12 +107,15 @@ function parseRows(rows) {
 }
 
 export async function readAllTabs(spreadsheetId) {
-  const sheetProps = await getSheetProperties(spreadsheetId);
+  const metaResponse = await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent("'_meta'!A:Z")}`);
+  const meta = parseRows(metaResponse.values || [])[0] || {};
+  const formatVersion = meta.version || '1';
+  const sheetProps = await ensureFixedTabs(spreadsheetId, formatVersion);
   const txnTabNames = sheetProps
     .map((s) => s.title)
     .filter((t) => t.startsWith(TXN_TAB_PREFIX));
 
-  const fixedTabs = Object.values(SHEET_TABS);
+  const fixedTabs = getSheetTabsForVersion(formatVersion);
   const allTabs = [...fixedTabs, ...txnTabNames];
 
   const ranges = allTabs.map((tab) => `'${tab}'!A:Z`);
@@ -107,36 +139,70 @@ export async function readAllTabs(spreadsheetId) {
   });
 
   result.transactions = allTransactions;
+  result.formatVersion = formatVersion;
   return result;
 }
 
 function buildTxnTabNames(accounts) {
-  const seen = new Map();
-  const names = [];
-  for (const acct of accounts) {
-    const base = sanitizeTabName(acct.name || 'Unnamed');
-    if (seen.has(base)) {
-      // Disambiguate: rename the first occurrence too
-      const firstIdx = seen.get(base);
-      if (!names[firstIdx].endsWith(')')) {
-        const firstAcct = accounts[firstIdx];
-        names[firstIdx] = `${TXN_TAB_PREFIX}${base} (${firstAcct.id.slice(0, 4)})`;
-      }
-      names.push(`${TXN_TAB_PREFIX}${base} (${acct.id.slice(0, 4)})`);
-    } else {
-      seen.set(base, names.length);
-      names.push(`${TXN_TAB_PREFIX}${base}`);
-    }
+  const maxTabNameLength = 31;
+  const bases = accounts.map((account) => sanitizeTabName(account.name || 'Unnamed'));
+  const counts = new Map();
+  for (const base of bases) counts.set(base, (counts.get(base) || 0) + 1);
+
+  return accounts.map((account, index) => {
+    const base = bases[index];
+    if (counts.get(base) === 1) return `${TXN_TAB_PREFIX}${base}`;
+    const suffix = ` (${account.id.slice(0, 4)})`;
+    const availableBaseLength = maxTabNameLength - TXN_TAB_PREFIX.length - suffix.length;
+    return `${TXN_TAB_PREFIX}${base.slice(0, availableBaseLength)}${suffix}`;
+  });
+}
+
+function assertTransactionsBelongToAccounts(accounts, transactions) {
+  const accountIds = new Set(accounts.map((account) => account.id));
+  const invalid = transactions.filter((transaction) => !accountIds.has(transaction.accountId));
+  if (invalid.length) {
+    throw new Error(`Cannot save: ${invalid.length} transaction(s) belong to an account that is no longer in the account list. Restore or reassign those transactions before saving.`);
   }
-  return names;
+}
+
+function sameIds(actual, expected) {
+  return actual.size === expected.size && [...expected].every((id) => actual.has(id));
+}
+
+async function verifyPersistedWorkbook(spreadsheetId, accounts, transactions, expectedTxnTabNames) {
+  const expectedAccountIds = new Set(accounts.map((account) => account.id));
+  const expectedTransactionIds = new Set(transactions.map((transaction) => transaction.id));
+  let lastProblem = 'The saved workbook could not be read back.';
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const sheetProperties = await getSheetProperties(spreadsheetId);
+    const persistedTxnTabs = new Set(sheetProperties.map((sheet) => sheet.title).filter((title) => title.startsWith(TXN_TAB_PREFIX)));
+    const persisted = await readAllTabs(spreadsheetId);
+    const persistedAccountIds = new Set((persisted[SHEET_TABS.ACCOUNTS] || []).map((account) => account.id));
+    const persistedTransactionIds = new Set((persisted.transactions || []).map((transaction) => transaction.id));
+
+    if (sameIds(persistedTxnTabs, new Set(expectedTxnTabNames))
+      && sameIds(persistedAccountIds, expectedAccountIds)
+      && sameIds(persistedTransactionIds, expectedTransactionIds)) {
+      return persisted;
+    }
+    lastProblem = `Expected ${expectedTxnTabNames.length} account registers and ${expectedTransactionIds.size} transactions, but Google Sheets returned ${persistedTxnTabs.size} registers and ${persistedTransactionIds.size} transactions.`;
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`Save verification failed. ${lastProblem} The sheet was not marked as saved.`);
 }
 
 export async function writeAllTabs(spreadsheetId, appData) {
   const accounts = appData.accounts || [];
   const transactions = appData.transactions || [];
+  assertTransactionsBelongToAccounts(accounts, transactions);
+  const formatVersion = appData[SHEET_TABS.META]?.[0]?.version || '1';
+  const headersByTab = getSheetHeadersForVersion(formatVersion);
+  const fixedTabs = getSheetTabsForVersion(formatVersion);
 
   // 1. Discover existing tabs
-  const sheetProps = await getSheetProperties(spreadsheetId);
+  const sheetProps = await ensureFixedTabs(spreadsheetId, formatVersion);
   const existingTxnTabs = sheetProps.filter((s) => s.title.startsWith(TXN_TAB_PREFIX));
 
   // 2. Build batchUpdate: delete old txn tabs, add new ones
@@ -164,7 +230,8 @@ export async function writeAllTabs(spreadsheetId, appData) {
   }
 
   // 3. Clear fixed tabs
-  const clearRanges = Object.values(SHEET_TABS).map((tab) => `'${tab}'!A:Z`);
+  const writableTabs = fixedTabs.filter((tab) => tab !== V2_LEDGER_TABS.CONVERSION_REPORT);
+  const clearRanges = writableTabs.map((tab) => `'${tab}'!A:Z`);
   await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values:batchClear`, {
     method: 'POST',
     body: JSON.stringify({ ranges: clearRanges }),
@@ -172,8 +239,10 @@ export async function writeAllTabs(spreadsheetId, appData) {
 
   // 4. Write fixed tabs
   const updateData = [];
-  for (const [tabName, headers] of Object.entries(SHEET_HEADERS)) {
-    let records = appData[tabName] || [];
+  const ledgerData = formatVersion === CURRENT_SHEET_FORMAT_VERSION ? buildLedgerData(appData) : {};
+  for (const [tabName, headers] of Object.entries(headersByTab)) {
+    if (tabName === V2_LEDGER_TABS.CONVERSION_REPORT) continue;
+    let records = ledgerData[tabName] || appData[tabName] || [];
     if (tabName === SHEET_TABS.PAYEES || tabName === SHEET_TABS.CATEGORIES) {
       records = records.slice().sort((a, b) => a.name.localeCompare(b.name));
     } else if (tabName === SHEET_TABS.RECONCILIATIONS) {
@@ -217,11 +286,127 @@ export async function writeAllTabs(spreadsheetId, appData) {
       data: updateData,
     }),
   });
+
+  return verifyPersistedWorkbook(spreadsheetId, accounts, transactions, newTxnTabNames);
 }
 
 export async function getSpreadsheetTitle(spreadsheetId) {
   const data = await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}?fields=properties.title`);
   return data.properties?.title || 'Untitled';
+}
+
+export async function renameSpreadsheet(spreadsheetId, title) {
+  await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests: [{
+        updateSpreadsheetProperties: {
+          properties: { title },
+          fields: 'title',
+        },
+      }],
+    }),
+  });
+}
+
+export async function writeConversionReport(spreadsheetId, report) {
+  const headers = getSheetHeadersForVersion(CURRENT_SHEET_FORMAT_VERSION)[V2_LEDGER_TABS.CONVERSION_REPORT];
+  const rows = [headers, headers.map((header) => report[header] ?? '')];
+  await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      valueInputOption: 'RAW',
+      data: [{ range: `'${V2_LEDGER_TABS.CONVERSION_REPORT}'!A1:${columnLetter(headers.length)}${rows.length}`, values: rows }],
+    }),
+  });
+}
+
+function buildLedgerData(appData) {
+  const accounts = appData.accounts || [];
+  const transactions = appData.transactions || [];
+  const chartAccounts = accounts.map((account) => ({
+    id: account.id,
+    name: account.nickname || account.name,
+    accountClass: accountClassFor(account.type),
+    subtype: account.type || 'checking',
+    normalBalance: accountClassFor(account.type) === 'liability' || accountClassFor(account.type) === 'equity' ? 'credit' : 'debit',
+    sourceAccountId: account.id,
+    active: 'TRUE',
+  }));
+  const categories = new Map();
+  const entries = [];
+  const postings = [];
+  const seenTransfers = new Set();
+
+  const addPosting = (entryId, accountId, debit, credit, transaction) => {
+    postings.push({
+      id: `posting-${entryId}-${postings.length + 1}`,
+      journalEntryId: entryId,
+      accountId,
+      debit: debit ? Number(debit).toFixed(2) : '',
+      credit: credit ? Number(credit).toFixed(2) : '',
+      payee: transaction.payee || '',
+      category: transaction.category || '',
+      sourceTransactionId: transaction.id,
+      reconciliationId: transaction.reconciliationId || '',
+    });
+  };
+  const categoryAccount = (transaction, kind) => {
+    const name = transaction.category || 'Conversion Review';
+    const id = `${kind}:${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    if (!categories.has(id)) {
+      categories.set(id, {
+        id,
+        name: `${kind === 'income' ? 'Income' : 'Expense'}: ${name}`,
+        accountClass: kind,
+        subtype: transaction.category ? 'category' : 'conversion-review',
+        normalBalance: kind === 'income' ? 'credit' : 'debit',
+        sourceAccountId: '',
+        active: 'TRUE',
+      });
+    }
+    return id;
+  };
+
+  for (const transaction of transactions) {
+    if (transaction.transferId) {
+      if (seenTransfers.has(transaction.transferId)) continue;
+      const pair = transactions.filter((item) => item.transferId === transaction.transferId);
+      const source = pair.find((item) => Number(item.payment) > 0);
+      const destination = pair.find((item) => Number(item.deposit) > 0);
+      if (source && destination && Number(source.payment) === Number(destination.deposit)) {
+        const entryId = `entry-${transaction.transferId}`;
+        entries.push({ id: entryId, date: source.date, description: source.description || source.payee, sourceTransactionIds: `${source.id},${destination.id}`, createdAt: '' });
+        addPosting(entryId, destination.accountId, source.payment, '', destination);
+        addPosting(entryId, source.accountId, '', source.payment, source);
+        seenTransfers.add(transaction.transferId);
+        continue;
+      }
+    }
+    const amount = Number(transaction.payment || transaction.deposit || 0);
+    if (!amount) continue;
+    const entryId = `entry-${transaction.id}`;
+    entries.push({ id: entryId, date: transaction.date, description: transaction.description || transaction.payee, sourceTransactionIds: transaction.id, createdAt: '' });
+    if (Number(transaction.payment) > 0) {
+      addPosting(entryId, categoryAccount(transaction, 'expense'), amount, '', transaction);
+      addPosting(entryId, transaction.accountId, '', amount, transaction);
+    } else {
+      addPosting(entryId, transaction.accountId, amount, '', transaction);
+      addPosting(entryId, categoryAccount(transaction, 'income'), '', amount, transaction);
+    }
+  }
+  return {
+    [V2_LEDGER_TABS.CHART_OF_ACCOUNTS]: [...chartAccounts, ...categories.values()],
+    [V2_LEDGER_TABS.JOURNAL_ENTRIES]: entries,
+    [V2_LEDGER_TABS.POSTINGS]: postings,
+  };
+}
+
+function accountClassFor(type = '') {
+  const normalized = type.toLowerCase();
+  if (['credit card', 'credit-card', 'loan', 'mortgage', 'liability'].includes(normalized)) return 'liability';
+  if (normalized === 'equity') return 'equity';
+  return 'asset';
 }
 
 // Google Picker to select a spreadsheet

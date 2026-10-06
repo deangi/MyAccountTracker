@@ -5,8 +5,8 @@ A browser-based bank account management app that uses Google Sheets as the backe
 ## Features
 
 - **Multiple Accounts**: Manage checking and savings accounts
-- **Transaction Tracking**: Add, edit, delete transactions with running balance
-- **Reconciliation**: Step-by-step wizard to reconcile against bank statements
+- **Transaction Tracking**: Add, edit, delete transactions with running balance, including linked transfers between accounts
+- **Reconciliation**: Step-by-step wizard to reconcile against bank statements; suspend and resume work while entering missing transactions
 - **CSV Import/Export**: Import transactions from CSV or export to CSV
 - **Google Sheets Backend**: All data stored in your own Google Sheets
 - **Google OAuth**: Secure authentication via Google
@@ -92,10 +92,13 @@ The app creates a Google Spreadsheet with these tabs:
 | `payees` | Payee list for autocomplete |
 | `categories` | Category list for autocomplete |
 | `reconciliations` | Reconciliation history |
+| `reconcile_drafts` | Suspended reconciliation work, including selected transactions |
+
+Format 2 spreadsheets also include `chart_of_accounts`, `journal_entries`, `postings`, and `conversion_report`. Opening a Format 1 file offers an explicit conversion: the app validates the source data, renames the original as a dated backup, then creates a separate Format 2 workbook with the original name.
 
 ## Tech Stack
 
-- React 18 (Vite)
+- React 19 (Vite)
 - Material UI (MUI)
 - Google Sheets API v4
 - Google OAuth 2.0 (Google Identity Services)

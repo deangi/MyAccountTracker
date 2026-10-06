@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { useApp } from '../../store/AppContext';
 import { toISODate } from '../../utils/formatters';
+import TransferForm from './TransferForm';
 
 const moneyRegex = /^\d+(\.\d{1,2})?$/;
 
@@ -34,6 +35,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
     date: '', checkNum: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false, accountId: '',
   });
   const [errors, setErrors] = useState({ payment: '', deposit: '', date: '' });
+  const isReconciled = Boolean(transaction?.reconciliationId);
 
   useEffect(() => {
     autoFilledPayeeRef.current = '';
@@ -61,6 +63,14 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
     }
     setErrors({ payment: '', deposit: '', date: '' });
   }, [transaction, open]);
+
+  if (transaction?.transferId) {
+    return <TransferForm key={transaction.id} open={open} onClose={onClose} transaction={transaction} accountId={accountId} initialDate={form.date} />;
+  }
+
+  if (form.isTransfer) {
+    return <TransferForm key="new-transfer" open={open} onClose={onClose} accountId={accountId} initialDate={form.date} />;
+  }
 
   const autoFillFromPayee = (payeeName) => {
     if (!payeeName || isEdit || payeeName === autoFilledPayeeRef.current) return;
@@ -109,7 +119,9 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
     const data = {
       ...form,
       date: dateValue,
-      cleared: form.cleared ? 'TRUE' : 'FALSE',
+      // Reconciliation owns this status. New transactions always begin
+      // unreconciled, and editing must not alter an existing status.
+      cleared: isEdit ? transaction.cleared : 'FALSE',
       payment: form.payment || '',
       deposit: form.deposit || '',
     };
@@ -157,11 +169,23 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{isEdit ? 'Edit Transaction' : 'Add Transaction'}</DialogTitle>
       <DialogContent>
+        {!isEdit && (
+          <TextField
+            select fullWidth margin="dense" label="Transaction Type" defaultValue="standard"
+            onChange={(e) => {
+              if (e.target.value === 'transfer') setForm((prev) => ({ ...prev, isTransfer: true }));
+            }}
+          >
+            <MenuItem value="standard">Standard transaction</MenuItem>
+            <MenuItem value="transfer">Transfer between accounts</MenuItem>
+          </TextField>
+        )}
         {isEdit && (
           <TextField
             select fullWidth margin="dense" label="Account"
             value={form.accountId}
             onChange={handleChange('accountId')}
+            disabled={isReconciled}
           >
             {state.accounts.map((a) => (
               <MenuItem key={a.id} value={a.id}>{a.nickname || a.name}</MenuItem>
@@ -233,11 +257,13 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
             <TextField {...params} margin="dense" label="Category" fullWidth />
           )}
         />
-        <FormControlLabel
-          control={<Checkbox checked={form.cleared} onChange={handleChange('cleared')} />}
-          label="Cleared"
-          sx={{ mt: 1 }}
-        />
+        {isEdit && (
+          <FormControlLabel
+            control={<Checkbox checked={form.cleared} disabled />}
+            label="Reconciliation status (managed by Reconcile)"
+            sx={{ mt: 1 }}
+          />
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>

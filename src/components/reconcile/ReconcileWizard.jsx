@@ -2,10 +2,12 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   Box, Typography, TextField, Button, Stepper, Step, StepLabel,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Checkbox, Alert, MenuItem,
+  Paper, Checkbox, Alert, MenuItem, IconButton,
 } from '@mui/material';
+import { Edit } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import { formatCurrency, formatDate, toISODate } from '../../utils/formatters';
+import TransactionForm from '../transactions/TransactionForm';
 
 const steps = ['Select Account & Enter Balances', 'Clear Transactions', 'Review & Complete'];
 
@@ -17,32 +19,50 @@ export default function ReconcileWizard() {
   const [openingBalance, setOpeningBalance] = useState('');
   const [closingBalance, setClosingBalance] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [transactionFormOpen, setTransactionFormOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
+
+  const draftForAccount = (id) => state.reconcileDrafts.find((draft) => draft.accountId === id);
+
+  const saveDraft = (step = activeStep, ids = selectedIds) => {
+    if (!accountId) return;
+    const existing = draftForAccount(accountId);
+    const now = new Date().toISOString();
+    dispatch({
+      type: 'SAVE_RECONCILE_DRAFT',
+      payload: {
+        id: existing?.id || generateUUID(), accountId, activeStep: String(step),
+        statementDate, statementOpeningBalance: openingBalance,
+        statementClosingBalance: closingBalance,
+        selectedTransactionIds: [...ids].join(','),
+        createdAt: existing?.createdAt || now, updatedAt: now,
+      },
+    });
+  };
 
   useEffect(() => {
     if (!accountId) return;
+    const draft = state.reconcileDrafts.find((item) => item.accountId === accountId);
     const prev = state.reconciliations
       .filter((r) => r.accountId === accountId)
       .sort((a, b) => (a.date || '') < (b.date || '') ? 1 : (a.date || '') > (b.date || '') ? -1 : 0)[0];
-    setOpeningBalance(prev ? prev.statementClosingBalance : '');
-
-    // Restore any saved draft for this account
-    try {
-      const draft = JSON.parse(localStorage.getItem('reconcile_draft_' + accountId));
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
       if (draft) {
-        if (draft.statementDate) setStatementDate(draft.statementDate);
-        if (draft.closingBalance) setClosingBalance(draft.closingBalance);
+        setStatementDate(draft.statementDate || toISODate(new Date().toISOString()));
+        setOpeningBalance(draft.statementOpeningBalance || '');
+        setClosingBalance(draft.statementClosingBalance || '');
+        setSelectedIds(new Set((draft.selectedTransactionIds || '').split(',').filter(Boolean)));
+        setActiveStep(Number(draft.activeStep || 0));
+      } else {
+        setOpeningBalance(prev ? prev.statementClosingBalance : '');
+        setSelectedIds(new Set());
+        setActiveStep(0);
       }
-    } catch { /* ignore */ }
-  }, [accountId, state.reconciliations]);
-
-  // Persist draft whenever setup fields change
-  useEffect(() => {
-    if (!accountId) return;
-    localStorage.setItem(
-      'reconcile_draft_' + accountId,
-      JSON.stringify({ statementDate, closingBalance })
-    );
-  }, [accountId, statementDate, closingBalance]);
+    });
+    return () => { active = false; };
+  }, [accountId, state.reconciliations, state.reconcileDrafts]);
 
   const unclearedTransactions = useMemo(() => {
     if (!accountId) return [];
@@ -62,12 +82,32 @@ export default function ReconcileWizard() {
   const isBalanced = Math.abs(difference) < 0.005;
 
   const toggleTransaction = (id) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+    saveDraft(1, next);
+  };
+
+  const handleAddTransaction = () => {
+    saveDraft(activeStep);
+    setEditingTransaction(null);
+    setTransactionFormOpen(true);
+  };
+
+  const handleEditTransaction = (transaction) => {
+    saveDraft(activeStep);
+    setEditingTransaction(transaction);
+    setTransactionFormOpen(true);
+  };
+
+  const handleDiscardDraft = () => {
+    const draft = draftForAccount(accountId);
+    if (draft && window.confirm('Discard this suspended reconciliation?')) {
+      dispatch({ type: 'DELETE_RECONCILE_DRAFT', payload: draft.id });
+      setActiveStep(0);
+      setSelectedIds(new Set());
+    }
   };
 
   const handleComplete = () => {
@@ -94,8 +134,8 @@ export default function ReconcileWizard() {
       })),
     });
 
-    // Clear saved draft for this account
-    localStorage.removeItem('reconcile_draft_' + accountId);
+    const draft = draftForAccount(accountId);
+    if (draft) dispatch({ type: 'DELETE_RECONCILE_DRAFT', payload: draft.id });
 
     // Reset wizard
     setActiveStep(0);
@@ -107,6 +147,12 @@ export default function ReconcileWizard() {
   return (
     <Box>
       <Typography variant="h5" sx={{ mb: 3 }}>Reconcile Account</Typography>
+
+      {draftForAccount(accountId) && (
+        <Alert severity="info" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={handleDiscardDraft}>Discard</Button>}>
+          Suspended reconciliation restored. You can continue where you left off.
+        </Alert>
+      )}
 
       <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
         {steps.map((label) => (
@@ -142,7 +188,7 @@ export default function ReconcileWizard() {
           <Button
             variant="contained" sx={{ mt: 2 }}
             disabled={!accountId || !openingBalance || !closingBalance}
-            onClick={() => setActiveStep(1)}
+            onClick={() => { saveDraft(1); setActiveStep(1); }}
           >
             Next
           </Button>
@@ -175,6 +221,7 @@ export default function ReconcileWizard() {
                   <TableCell>Payee</TableCell>
                   <TableCell align="right">Payment</TableCell>
                   <TableCell align="right">Deposit</TableCell>
+                  <TableCell align="center">Edit</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -191,11 +238,20 @@ export default function ReconcileWizard() {
                     <TableCell align="right" sx={{ color: 'success.main' }}>
                       {txn.deposit ? formatCurrency(txn.deposit) : ''}
                     </TableCell>
+                    <TableCell align="center">
+                      <IconButton
+                        size="small"
+                        aria-label={`Edit ${txn.payee || 'transaction'}`}
+                        onClick={(event) => { event.stopPropagation(); handleEditTransaction(txn); }}
+                      >
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {unclearedTransactions.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} align="center">No uncleared transactions</TableCell>
+                    <TableCell colSpan={6} align="center">No unreconciled transactions</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -203,8 +259,9 @@ export default function ReconcileWizard() {
           </TableContainer>
 
           <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-            <Button onClick={() => setActiveStep(0)}>Back</Button>
-            <Button variant="contained" onClick={() => setActiveStep(2)}>Next</Button>
+            <Button onClick={() => { saveDraft(0); setActiveStep(0); }}>Back</Button>
+            <Button onClick={handleAddTransaction}>Add Missing Transaction</Button>
+            <Button variant="contained" onClick={() => { saveDraft(2); setActiveStep(2); }}>Next</Button>
           </Box>
         </Box>
       )}
@@ -237,7 +294,8 @@ export default function ReconcileWizard() {
           )}
 
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button onClick={() => setActiveStep(1)}>Back</Button>
+            <Button onClick={() => { saveDraft(1); setActiveStep(1); }}>Back</Button>
+            <Button onClick={handleAddTransaction}>Add Missing Transaction</Button>
             <Button
               variant="contained" color="success"
               disabled={!isBalanced}
@@ -248,6 +306,12 @@ export default function ReconcileWizard() {
           </Box>
         </Box>
       )}
+      <TransactionForm
+        open={transactionFormOpen}
+        onClose={() => setTransactionFormOpen(false)}
+        transaction={editingTransaction}
+        accountId={accountId}
+      />
     </Box>
   );
 }

@@ -6,7 +6,7 @@ import { Menu as MenuIcon, InsertDriveFile } from '@mui/icons-material';
 import LoginButton from '../auth/LoginButton';
 import FileMenu from './FileMenu';
 import { useApp } from '../../store/AppContext';
-import { APP_TITLE, APP_VERSION, TOKEN_EXPIRY_WARNING_MS, DIRTY_WARNING_MS } from '../../config';
+import { APP_TITLE, APP_VERSION, APP_BUILD_DATE, TOKEN_EXPIRY_WARNING_MS, DIRTY_WARNING_MS } from '../../config';
 import { getTokenAcquiredAt } from '../../services/googleAuth';
 
 export default function AppBarComponent({ onMenuClick }) {
@@ -40,7 +40,7 @@ export default function AppBarComponent({ onMenuClick }) {
         <Typography variant="h6" noWrap sx={{ flexGrow: 0, mr: 2 }}>
           {APP_TITLE}
           <Typography component="span" variant="caption" sx={{ ml: 1, opacity: 0.7 }}>
-            v{APP_VERSION}
+            v{APP_VERSION} · built {APP_BUILD_DATE}
           </Typography>
         </Typography>
 

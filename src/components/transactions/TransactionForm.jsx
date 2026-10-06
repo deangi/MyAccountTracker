@@ -24,6 +24,13 @@ function validateDate(value) {
   return '';
 }
 
+function validateCheckNum(value) {
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return '';
+  if (['DEP', 'EFT', 'TXFR'].includes(normalized) || /^\d+$/.test(normalized)) return '';
+  return 'Use DEP, EFT, TXFR, or a numeric check number';
+}
+
 export default function TransactionForm({ open, onClose, transaction, accountId }) {
   const { state, dispatch, generateUUID } = useApp();
   const isEdit = !!transaction;
@@ -34,7 +41,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
   const [form, setForm] = useState({
     date: '', checkNum: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false, accountId: '',
   });
-  const [errors, setErrors] = useState({ payment: '', deposit: '', date: '' });
+  const [errors, setErrors] = useState({ payment: '', deposit: '', date: '', checkNum: '' });
   const isReconciled = Boolean(transaction?.reconciliationId);
 
   useEffect(() => {
@@ -61,7 +68,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
         checkNum: '', payee: '', description: '', payment: '', deposit: '', category: '', cleared: false,
       });
     }
-    setErrors({ payment: '', deposit: '', date: '' });
+    setErrors({ payment: '', deposit: '', date: '', checkNum: '' });
   }, [transaction, open]);
 
   if (transaction?.transferId) {
@@ -100,6 +107,9 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
       latestDateRef.current = value; // sync immediately — don't wait for re-render
       setErrors((prev) => ({ ...prev, date: validateDate(value) }));
     }
+    if (field === 'checkNum') {
+      setErrors((prev) => ({ ...prev, checkNum: validateCheckNum(value) }));
+    }
   };
 
   const handleSubmit = () => {
@@ -110,9 +120,10 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
     const paymentErr = validateMoney(form.payment);
     const depositErr = validateMoney(form.deposit);
     const dateErr = validateDate(dateValue);
+    const checkNumErr = validateCheckNum(form.checkNum);
 
-    if (paymentErr || depositErr || dateErr) {
-      setErrors({ payment: paymentErr, deposit: depositErr, date: dateErr });
+    if (paymentErr || depositErr || dateErr || checkNumErr) {
+      setErrors({ payment: paymentErr, deposit: depositErr, date: dateErr, checkNum: checkNumErr });
       return;
     }
 
@@ -124,6 +135,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
       cleared: isEdit ? transaction.cleared : 'FALSE',
       payment: form.payment || '',
       deposit: form.deposit || '',
+      checkNum: form.checkNum.trim().toUpperCase(),
     };
 
     if (isEdit) {
@@ -207,10 +219,14 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
           freeSolo
           options={['DEP', 'EFT', 'TXFR']}
           value={form.checkNum}
-          onInputChange={(_, value) => setForm((prev) => ({ ...prev, checkNum: value }))}
+          onInputChange={(_, value) => {
+            const normalized = value.toUpperCase();
+            setForm((prev) => ({ ...prev, checkNum: normalized }));
+            setErrors((prev) => ({ ...prev, checkNum: validateCheckNum(normalized) }));
+          }}
           renderInput={(params) => (
             <TextField {...params} margin="dense" label="Check # / Type" fullWidth
-              placeholder="Check number, DEP, EFT, or TXFR" />
+              placeholder="Check number, DEP, EFT, or TXFR" error={!!errors.checkNum} helperText={errors.checkNum} />
           )}
         />
         <Autocomplete

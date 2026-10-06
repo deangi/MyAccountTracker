@@ -18,7 +18,7 @@ export const IDLE_THRESHOLD_MS = 2 * 60 * 1000;          // 2 minutes of no inpu
 export const TOKEN_PREEXPIRY_SAVE_MS = 55 * 60 * 1000;   // start pushing saves once token is >55 min old
 export const IDLE_CHECK_INTERVAL_MS = 30 * 1000;         // re-evaluate every 30s
 export const APP_TITLE = 'MyAccountTracker';
-export const APP_VERSION = '2.09';
+export const APP_VERSION = '2.12';
 export const APP_BUILD_DATE = '2026-10-06';
 export const CURRENT_SHEET_FORMAT_VERSION = '2';
 

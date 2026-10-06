@@ -36,7 +36,7 @@ export default function TransferForm({ open, onClose, transaction, accountId, in
     }
     const current = accountFor(currentId);
     const other = accountFor(form.otherAccountId);
-    const common = { date: form.date, checkNum: form.checkNum || 'TXFR', description: form.description, category: '' };
+    const common = { date: form.date, checkNum: 'TXFR', description: form.description, category: '' };
 
     if (!isEdit) {
       const transferId = generateUUID();
@@ -77,7 +77,7 @@ export default function TransferForm({ open, onClose, transaction, accountId, in
           {selectable.map((account) => <MenuItem key={account.id} value={account.id}>{account.nickname || account.name}</MenuItem>)}
         </TextField>
         <TextField margin="dense" label="Transfer Amount" fullWidth value={form.amount} onChange={change('amount')} slotProps={{ input: { inputProps: { min: 0, step: '0.01' } } }} />
-        <TextField margin="dense" label="Check # / Type" fullWidth value={form.checkNum} onChange={change('checkNum')} />
+        <TextField margin="dense" label="Check # / Type" fullWidth value="TXFR" disabled helperText="Transfers are always marked TXFR." />
         <TextField margin="dense" label="Memo" fullWidth multiline rows={2} value={form.description} onChange={change('description')} />
         {isEdit && <FormControlLabel control={<Checkbox checked={form.cleared} disabled />} label="Reconciliation status (managed by Reconcile)" sx={{ mt: 1 }} />}
         {error && <p style={{ color: '#c62828' }}>{error}</p>}

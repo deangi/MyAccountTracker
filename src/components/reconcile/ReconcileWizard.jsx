@@ -77,6 +77,18 @@ export default function ReconcileWizard() {
       .reduce((sum, t) => sum + (parseFloat(t.deposit) || 0) - (parseFloat(t.payment) || 0), 0);
   }, [unclearedTransactions, selectedIds]);
 
+  const selectedDeposits = useMemo(() => (
+    unclearedTransactions
+      .filter((transaction) => selectedIds.has(transaction.id))
+      .reduce((sum, transaction) => sum + (parseFloat(transaction.deposit) || 0), 0)
+  ), [unclearedTransactions, selectedIds]);
+
+  const selectedPayouts = useMemo(() => (
+    unclearedTransactions
+      .filter((transaction) => selectedIds.has(transaction.id))
+      .reduce((sum, transaction) => sum + (parseFloat(transaction.payment) || 0), 0)
+  ), [unclearedTransactions, selectedIds]);
+
   const expectedBalance = (parseFloat(openingBalance) || 0) + selectedTotal;
   const difference = (parseFloat(closingBalance) || 0) - expectedBalance;
   const isBalanced = Math.abs(difference) < 0.005;
@@ -207,6 +219,10 @@ export default function ReconcileWizard() {
               {' | '}Cleared Balance: <strong>{formatCurrency(expectedBalance)}</strong>
               {' | '}Statement Closing: <strong>{formatCurrency(closingBalance)}</strong>
             </Typography>
+            <Typography>
+              Checked Deposits: <strong>{formatCurrency(selectedDeposits)}</strong>
+              {' | '}Checked Payouts: <strong>{formatCurrency(selectedPayouts)}</strong>
+            </Typography>
             <Typography color={isBalanced ? 'success.main' : 'error.main'}>
               Difference: {formatCurrency(difference)}
             </Typography>
@@ -275,6 +291,8 @@ export default function ReconcileWizard() {
             <Typography>Opening Balance: {formatCurrency(openingBalance)}</Typography>
             <Typography>Closing Balance: {formatCurrency(closingBalance)}</Typography>
             <Typography>Transactions Cleared: {selectedIds.size}</Typography>
+            <Typography>Checked Deposits: {formatCurrency(selectedDeposits)}</Typography>
+            <Typography>Checked Payouts: {formatCurrency(selectedPayouts)}</Typography>
             <Typography color={isBalanced ? 'success.main' : 'error.main'} variant="h6" sx={{ mt: 1 }}>
               Difference: {formatCurrency(difference)}
             </Typography>

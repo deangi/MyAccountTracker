@@ -3,7 +3,9 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, MenuItem, TextField, Box, Alert,
+  Dialog as HelpDialog, DialogTitle as HelpDialogTitle, DialogContent as HelpDialogContent, DialogActions as HelpDialogActions,
 } from '@mui/material';
+import { HelpOutline } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import { parseTsv } from '../../utils/csv';
 
@@ -54,6 +56,7 @@ export default function CsvImport({ open, onClose, accountId }) {
   const [tsvData, setTsvData] = useState(null);
   const [columnMap, setColumnMap] = useState({});
   const [error, setError] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
@@ -180,10 +183,13 @@ export default function CsvImport({ open, onClose, accountId }) {
           Header and footer lines are detected and skipped automatically.
         </Typography>
 
-        <Button variant="outlined" component="label" sx={{ mb: 2 }}>
-          Select File
-          <input type="file" accept=".txt,.tsv,.csv" hidden onChange={handleFileSelect} />
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+          <Button variant="outlined" component="label">
+            Select File
+            <input type="file" accept=".txt,.tsv" hidden onChange={handleFileSelect} />
+          </Button>
+          <Button variant="text" startIcon={<HelpOutline />} onClick={() => setHelpOpen(true)}>Import Help</Button>
+        </Box>
 
         {tsvData && (
           <>
@@ -239,6 +245,22 @@ export default function CsvImport({ open, onClose, accountId }) {
           Import {tsvData?.data?.length || 0} Transactions
         </Button>
       </DialogActions>
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="md" fullWidth>
+        <HelpDialogTitle>Transaction Import Help</HelpDialogTitle>
+        <HelpDialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>Import currently accepts tab-separated `.txt` or `.tsv` files. The first row should contain column headings. Map the headings after selecting the file.</Typography>
+          <Typography variant="subtitle2">Example: payment and deposit columns</Typography>
+          <Box component="pre" sx={{ p: 1.5, bgcolor: 'grey.100', overflow: 'auto', fontSize: '0.8rem' }}>{`Date\tCheck #\tPayee\tMemo\tPayment\tDeposit\tCategory
+10/06/2026\tEFT\tElectric Company\tOctober bill\t125.40\t\tUtilities
+10/06/2026\tDEP\tEmployer\tPayroll\t\t2500.00\tIncome`}</Box>
+          <Typography variant="subtitle2">Example: signed amount column</Typography>
+          <Box component="pre" sx={{ p: 1.5, bgcolor: 'grey.100', overflow: 'auto', fontSize: '0.8rem' }}>{`Date\tNum\tDescription\tMemo\tAmount\tCategory
+10/06/2026\t1025\tOffice Store\tPrinter paper\t-42.18\tOffice Supplies
+10/06/2026\tDEP\tEmployer\tPayroll\t2500.00\tIncome`}</Box>
+          <Typography variant="body2">Check # / Type values should be `DEP`, `EFT`, `TXFR`, or a numeric check number. CSV import support is planned for a future release.</Typography>
+        </HelpDialogContent>
+        <HelpDialogActions><Button onClick={() => setHelpOpen(false)} variant="contained">Close</Button></HelpDialogActions>
+      </HelpDialog>
     </Dialog>
   );
 }

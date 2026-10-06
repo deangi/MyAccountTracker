@@ -11,6 +11,7 @@ import PayeeManager from './components/payees/PayeeManager';
 import CategoryManager from './components/categories/CategoryManager';
 import ReconcileWizard from './components/reconcile/ReconcileWizard';
 import ReconcileHistory from './components/reconcile/ReconcileHistory';
+import ReportManager from './components/reports/ReportManager';
 import { GOOGLE_CLIENT_ID } from './config';
 
 const muiTheme = createTheme({
@@ -102,6 +103,8 @@ function AppContent() {
         return <ReconcileWizard />;
       case 'reconcileHistory':
         return <ReconcileHistory />;
+      case 'reports':
+        return <ReportManager />;
       case 'accounts':
       default:
         return <AccountList onViewAccount={handleViewAccount} />;

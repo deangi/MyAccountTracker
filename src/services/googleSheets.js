@@ -55,6 +55,46 @@ export async function createSpreadsheet(title, formatVersion = CURRENT_SHEET_FOR
   return spreadsheetId;
 }
 
+export async function createReportSpreadsheet(title, sheetName, rows) {
+  const data = await sheetsRequest(SHEETS_BASE, {
+    method: 'POST',
+    body: JSON.stringify({ properties: { title }, sheets: [{ properties: { title: sheetName } }] }),
+  });
+  const spreadsheetId = data.spreadsheetId;
+  const widestRow = Math.max(...rows.map((row) => row.length), 1);
+  await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      valueInputOption: 'RAW',
+      data: [{ range: `'${sheetName}'!A1:${columnLetter(widestRow)}${rows.length}`, values: rows }],
+    }),
+  });
+  return spreadsheetId;
+}
+
+export async function createMultiSheetReportSpreadsheet(title, sheets) {
+  const data = await sheetsRequest(SHEETS_BASE, {
+    method: 'POST',
+    body: JSON.stringify({
+      properties: { title },
+      sheets: sheets.map((sheet) => ({ properties: { title: sheet.name } })),
+    }),
+  });
+  const spreadsheetId = data.spreadsheetId;
+  const updateData = sheets.map((sheet) => {
+    const widestRow = Math.max(...sheet.rows.map((row) => row.length), 1);
+    return {
+      range: `'${sheet.name}'!A1:${columnLetter(widestRow)}${sheet.rows.length}`,
+      values: sheet.rows,
+    };
+  });
+  await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ valueInputOption: 'RAW', data: updateData }),
+  });
+  return spreadsheetId;
+}
+
 async function getSheetProperties(spreadsheetId) {
   const data = await sheetsRequest(
     `${SHEETS_BASE}/${spreadsheetId}?fields=sheets.properties`

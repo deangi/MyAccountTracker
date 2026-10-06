@@ -3,7 +3,7 @@ import {
   Divider, Typography, Box, Toolbar,
 } from '@mui/material';
 import {
-  AccountBalance, Receipt, People, Category, CheckCircle, History,
+  AccountBalance, Receipt, People, Category, CheckCircle, History, Assessment,
 } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 
@@ -13,6 +13,7 @@ const navItems = [
   { id: 'accounts', label: 'Accounts', icon: <AccountBalance /> },
   { id: 'payees', label: 'Payees', icon: <People /> },
   { id: 'categories', label: 'Categories', icon: <Category /> },
+  { id: 'reports', label: 'Reports', icon: <Assessment /> },
 ];
 
 export default function Sidebar({ open, onClose, currentView, onViewChange, isMobile }) {

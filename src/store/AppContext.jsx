@@ -3,7 +3,7 @@ import { readAllTabs, writeAllTabs, createSpreadsheet } from '../services/google
 import { migrateV1ToV2, synchronizeAndValidateV2Ledger } from '../services/formatMigration';
 import { initAutoSave, markDirty, markClean, getAutoSaveStatus, onStatusChange } from '../services/autoSave';
 import { generateUUID } from '../utils/uuid';
-import { CURRENT_SHEET_FORMAT_VERSION, SHEET_TABS, APP_TITLE } from '../config';
+import { CURRENT_SHEET_FORMAT_VERSION, SHEET_TABS, V2_LEDGER_TABS, APP_TITLE } from '../config';
 
 const AppContext = createContext(null);
 
@@ -18,6 +18,9 @@ const initialState = {
   categories: [],
   reconciliations: [],
   reconcileDrafts: [],
+  chartOfAccounts: [],
+  journalEntries: [],
+  postings: [],
   selectedAccountId: null,
   loading: false,
   error: null,
@@ -44,6 +47,9 @@ function reducer(state, action) {
         categories: (action.payload[SHEET_TABS.CATEGORIES] || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
         reconciliations: action.payload[SHEET_TABS.RECONCILIATIONS] || [],
         reconcileDrafts: action.payload[SHEET_TABS.RECONCILE_DRAFTS] || [],
+        chartOfAccounts: action.payload[V2_LEDGER_TABS.CHART_OF_ACCOUNTS] || [],
+        journalEntries: action.payload[V2_LEDGER_TABS.JOURNAL_ENTRIES] || [],
+        postings: action.payload[V2_LEDGER_TABS.POSTINGS] || [],
         loading: false,
       };
     case 'CLEAR_DATA':
@@ -56,6 +62,9 @@ function reducer(state, action) {
         categories: [],
         reconciliations: [],
         reconcileDrafts: [],
+        chartOfAccounts: [],
+        journalEntries: [],
+        postings: [],
         selectedAccountId: null,
         spreadsheetId: null,
         spreadsheetTitle: '',

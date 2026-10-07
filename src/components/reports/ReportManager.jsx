@@ -229,7 +229,20 @@ export default function ReportManager() {
         <Typography variant="body2" color="text.secondary">Alphabetized payees and categories in separate worksheets of one report file.</Typography>
         <Button sx={{ mt: 2 }} variant="contained" startIcon={<Description />} disabled={running} onClick={runPayeesAndCategories}>Create Payees &amp; Categories</Button>
       </Box>
-      {result?.url && <Alert severity="success" sx={{ mt: 2 }}><strong>Report created successfully:</strong> {result.title}{result.count != null ? ` (${result.count} transaction(s))` : ''}. <Link href={result.url} target="_blank" rel="noreferrer" underline="hover">Open report <Launch fontSize="inherit" /></Link></Alert>}
+      <Dialog open={Boolean(result?.url)} onClose={() => setResult(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Report Created Successfully</DialogTitle>
+        <DialogContent>
+          <Alert severity="success">
+            <Typography variant="body2" sx={{ mb: 1 }}>The report was created successfully.</Typography>
+            <Typography variant="body2"><strong>File name:</strong> {result?.title}</Typography>
+            {result?.count != null && <Typography variant="body2">{result.count} transaction(s) included.</Typography>}
+            <Link href={result?.url} target="_blank" rel="noreferrer" underline="hover" sx={{ display: 'inline-block', mt: 1 }}>
+              Open report <Launch fontSize="inherit" />
+            </Link>
+          </Alert>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setResult(null)} variant="contained">Close</Button></DialogActions>
+      </Dialog>
       <Dialog open={Boolean(reportError)} onClose={() => setReportError('')} maxWidth="sm" fullWidth>
         <DialogTitle>Report Could Not Be Created</DialogTitle>
         <DialogContent><Alert severity="error">{reportError}</Alert></DialogContent>

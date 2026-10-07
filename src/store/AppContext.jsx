@@ -239,7 +239,7 @@ export function AppProvider({ children }) {
       localStorage.setItem('defaultSpreadsheetId', id);
 
       // Write initial meta
-      await writeAllTabs(id, {
+      const created = await writeAllTabs(id, {
         [SHEET_TABS.META]: [meta],
         [SHEET_TABS.ACCOUNTS]: [],
         transactions: [],
@@ -248,6 +248,9 @@ export function AppProvider({ children }) {
         [SHEET_TABS.RECONCILIATIONS]: [],
         [SHEET_TABS.RECONCILE_DRAFTS]: [],
       });
+      if (created.formatVersion !== CURRENT_SHEET_FORMAT_VERSION) {
+        throw new Error(`New file was created with Format ${created.formatVersion || 'unknown'} instead of Format ${CURRENT_SHEET_FORMAT_VERSION}.`);
+      }
       markClean();
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message });
@@ -261,10 +264,16 @@ export function AppProvider({ children }) {
     dispatch({ type: 'SET_ERROR', payload: null });
     try {
       const id = await createSpreadsheet(title);
-      dispatch({ type: 'SET_META', payload: { title, lastSaved: new Date().toISOString() } });
+      dispatch({ type: 'SET_META', payload: { title, lastSaved: new Date().toISOString(), version: CURRENT_SHEET_FORMAT_VERSION } });
       dispatch({ type: 'SET_SPREADSHEET', payload: { id, title } });
       localStorage.setItem('defaultSpreadsheetId', id);
-      await writeAllTabs(id, getAppData());
+      const saved = await writeAllTabs(id, {
+        ...getAppData(),
+        [SHEET_TABS.META]: [{ ...stateRef.current.meta, title, lastSaved: new Date().toISOString(), version: CURRENT_SHEET_FORMAT_VERSION }],
+      });
+      if (saved.formatVersion !== CURRENT_SHEET_FORMAT_VERSION) {
+        throw new Error(`Save As created a Format ${saved.formatVersion || 'unknown'} file instead of Format ${CURRENT_SHEET_FORMAT_VERSION}.`);
+      }
       markClean();
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message });

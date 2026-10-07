@@ -22,6 +22,16 @@ async function sheetsRequest(url, options = {}) {
 }
 
 export async function createSpreadsheet(title, formatVersion = CURRENT_SHEET_FORMAT_VERSION) {
+  // A newly-created account file is always initialized with its format marker.
+  // This makes a partially interrupted first save recognizably Format 2 instead
+  // of falling back to the legacy, unversioned Format 1 behavior on reopen.
+  const initialMeta = {
+    title,
+    owner: '',
+    lastSaved: new Date().toISOString(),
+    version: formatVersion,
+    appVersion: APP_VERSION,
+  };
   const sheets = getSheetTabsForVersion(formatVersion).map((tabName) => ({
     properties: { title: tabName },
   }));
@@ -39,10 +49,13 @@ export async function createSpreadsheet(title, formatVersion = CURRENT_SHEET_FOR
   const spreadsheetId = data.spreadsheetId;
 
   // Write headers to fixed tabs only (no transaction tabs yet)
-  const headerRequests = Object.entries(getSheetHeadersForVersion(formatVersion)).map(([tabName, headers]) => ({
-    range: `'${tabName}'!A1:${columnLetter(headers.length)}1`,
-    values: [headers],
-  }));
+  const headerRequests = Object.entries(getSheetHeadersForVersion(formatVersion)).map(([tabName, headers]) => {
+    const isMeta = tabName === SHEET_TABS.META;
+    return {
+      range: `'${tabName}'!A1:${columnLetter(headers.length)}${isMeta ? 2 : 1}`,
+      values: isMeta ? [headers, headers.map((header) => initialMeta[header] ?? '')] : [headers],
+    };
+  });
 
   await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values:batchUpdate`, {
     method: 'POST',

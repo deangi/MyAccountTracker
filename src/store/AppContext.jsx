@@ -27,6 +27,20 @@ const initialState = {
   saveStatus: getAutoSaveStatus(),
 };
 
+function ensureTransactionNamesInMasterList(items = [], transactions = [], field, idPrefix) {
+  const known = new Set(items.map((item) => item.name.trim().toLocaleLowerCase()));
+  const additions = [];
+  for (const transaction of transactions) {
+    const name = String(transaction[field] || '').trim();
+    const key = name.toLocaleLowerCase();
+    if (name && !known.has(key)) {
+      known.add(key);
+      additions.push({ id: `${idPrefix}-${encodeURIComponent(key)}`, name });
+    }
+  }
+  return [...items, ...additions].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function reducer(state, action) {
   switch (action.type) {
     case 'SET_AUTH':
@@ -38,13 +52,17 @@ function reducer(state, action) {
     case 'SET_SPREADSHEET':
       return { ...state, spreadsheetId: action.payload.id, spreadsheetTitle: action.payload.title };
     case 'LOAD_DATA':
+      {
+        const transactions = (action.payload.transactions || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+        const payees = ensureTransactionNamesInMasterList(action.payload[SHEET_TABS.PAYEES] || [], transactions, 'payee', 'recovered-payee');
+        const categories = ensureTransactionNamesInMasterList(action.payload[SHEET_TABS.CATEGORIES] || [], transactions, 'category', 'recovered-category');
       return {
         ...state,
         meta: action.payload[SHEET_TABS.META]?.[0] || initialState.meta,
         accounts: action.payload[SHEET_TABS.ACCOUNTS] || [],
-        transactions: (action.payload.transactions || []).slice().sort((a, b) => a.date.localeCompare(b.date)),
-        payees: (action.payload[SHEET_TABS.PAYEES] || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
-        categories: (action.payload[SHEET_TABS.CATEGORIES] || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
+        transactions,
+        payees,
+        categories,
         reconciliations: action.payload[SHEET_TABS.RECONCILIATIONS] || [],
         reconcileDrafts: action.payload[SHEET_TABS.RECONCILE_DRAFTS] || [],
         chartOfAccounts: action.payload[V2_LEDGER_TABS.CHART_OF_ACCOUNTS] || [],
@@ -52,6 +70,7 @@ function reducer(state, action) {
         postings: action.payload[V2_LEDGER_TABS.POSTINGS] || [],
         loading: false,
       };
+      }
     case 'CLEAR_DATA':
       return {
         ...state,
@@ -120,12 +139,16 @@ function reducer(state, action) {
     // Payees
     case 'ADD_PAYEE':
       return { ...state, payees: [...state.payees, action.payload].sort((a, b) => a.name.localeCompare(b.name)) };
+    case 'IMPORT_PAYEES':
+      return { ...state, payees: [...state.payees, ...action.payload].sort((a, b) => a.name.localeCompare(b.name)) };
     case 'DELETE_PAYEE':
       return { ...state, payees: state.payees.filter((p) => p.id !== action.payload) };
 
     // Categories
     case 'ADD_CATEGORY':
       return { ...state, categories: [...state.categories, action.payload].sort((a, b) => a.name.localeCompare(b.name)) };
+    case 'IMPORT_CATEGORIES':
+      return { ...state, categories: [...state.categories, ...action.payload].sort((a, b) => a.name.localeCompare(b.name)) };
     case 'DELETE_CATEGORY':
       return { ...state, categories: state.categories.filter((c) => c.id !== action.payload) };
 
@@ -217,10 +240,20 @@ export function AppProvider({ children }) {
     dispatch({ type: 'SET_ERROR', payload: null });
     try {
       const data = await readAllTabs(sheetId);
+      const transactions = data.transactions || [];
+      const repairedPayees = ensureTransactionNamesInMasterList(data[SHEET_TABS.PAYEES] || [], transactions, 'payee', 'recovered-payee');
+      const repairedCategories = ensureTransactionNamesInMasterList(data[SHEET_TABS.CATEGORIES] || [], transactions, 'category', 'recovered-category');
+      const repaired = repairedPayees.length !== (data[SHEET_TABS.PAYEES] || []).length
+        || repairedCategories.length !== (data[SHEET_TABS.CATEGORIES] || []).length;
+      if (repaired) {
+        data[SHEET_TABS.PAYEES] = repairedPayees;
+        data[SHEET_TABS.CATEGORIES] = repairedCategories;
+      }
       dispatch({ type: 'LOAD_DATA', payload: data });
       dispatch({ type: 'SET_SPREADSHEET', payload: { id: sheetId, title: data[SHEET_TABS.META]?.[0]?.title || '' } });
       localStorage.setItem('defaultSpreadsheetId', sheetId);
-      markClean();
+      if (repaired) markDirty();
+      else markClean();
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message });
       dispatch({ type: 'SET_LOADING', payload: false });
@@ -323,8 +356,8 @@ export function AppProvider({ children }) {
       'ADD_ACCOUNT', 'IMPORT_ACCOUNTS', 'UPDATE_ACCOUNT', 'DELETE_ACCOUNT',
       'ADD_TRANSACTION', 'UPDATE_TRANSACTION', 'DELETE_TRANSACTION', 'IMPORT_TRANSACTIONS',
       'ADD_TRANSFER', 'UPDATE_TRANSFER', 'DELETE_TRANSFER',
-      'ADD_PAYEE', 'DELETE_PAYEE',
-      'ADD_CATEGORY', 'DELETE_CATEGORY',
+      'ADD_PAYEE', 'IMPORT_PAYEES', 'DELETE_PAYEE',
+      'ADD_CATEGORY', 'IMPORT_CATEGORIES', 'DELETE_CATEGORY',
       'ADD_RECONCILIATION', 'UPDATE_TRANSACTIONS_BATCH', 'SAVE_RECONCILE_DRAFT', 'DELETE_RECONCILE_DRAFT', 'SET_META',
     ];
     if (dataActions.includes(action.type)) {

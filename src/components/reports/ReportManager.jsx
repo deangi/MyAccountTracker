@@ -160,9 +160,14 @@ export default function ReportManager() {
       const runAt = new Date();
       const title = `${sourceFileName} — Payees and Categories — ${runAt.toISOString().slice(0, 10)}`;
       const header = (name) => [...reportHeader(name, sourceFileName, runAt, ['Sorted', 'Alphabetically']), ['Name']];
+      const allNames = (masterItems, transactionField) => [...new Set([
+        ...masterItems.map((item) => item.name),
+        ...state.transactions.map((transaction) => transaction[transactionField]),
+      ].map((name) => String(name || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
       const spreadsheetId = await createMultiSheetReportSpreadsheet(title, [
-        { name: 'Payees', rows: [...header('Payees'), ...state.payees.slice().sort((a, b) => a.name.localeCompare(b.name)).map((payee) => [payee.name])] },
-        { name: 'Categories', rows: [...header('Categories'), ...state.categories.slice().sort((a, b) => a.name.localeCompare(b.name)).map((category) => [category.name])] },
+        { name: 'Payees', rows: [...header('Payees'), ...allNames(state.payees, 'payee').map((name) => [name])] },
+        { name: 'Categories', rows: [...header('Categories'), ...allNames(state.categories, 'category').map((name) => [name])] },
       ]);
       setResult({ title, count: null, url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}` });
     } catch (err) {

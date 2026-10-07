@@ -158,6 +158,25 @@ export default function CsvImport({ open, onClose, accountId }) {
       return txn;
     });
 
+    // Keep the master lists in step with imported register data.  The reports
+    // use these lists, and matching is case-insensitive to prevent duplicates
+    // such as "Utilities" and "utilities".
+    const addMissingListItems = (field, existingItems, actionType) => {
+      const known = new Set(existingItems.map((item) => item.name.trim().toLocaleLowerCase()));
+      const additions = [];
+      for (const transaction of transactions) {
+        const name = transaction[field].trim();
+        const key = name.toLocaleLowerCase();
+        if (name && !known.has(key)) {
+          known.add(key);
+          additions.push({ id: generateUUID(), name });
+        }
+      }
+      if (additions.length) dispatch({ type: actionType, payload: additions });
+    };
+
+    addMissingListItems('payee', state.payees, 'IMPORT_PAYEES');
+    addMissingListItems('category', state.categories, 'IMPORT_CATEGORIES');
     dispatch({ type: 'IMPORT_TRANSACTIONS', payload: transactions });
     handleClose();
   };

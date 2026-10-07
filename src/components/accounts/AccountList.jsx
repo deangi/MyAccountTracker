@@ -3,15 +3,17 @@ import {
   Box, Typography, Button, Card, CardContent, CardActions,
   Grid, IconButton, Chip,
 } from '@mui/material';
-import { Add, Edit, Delete, AccountBalance } from '@mui/icons-material';
+import { Add, Edit, Delete, AccountBalance, FileUpload } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import AccountForm from './AccountForm';
 import { formatCurrency } from '../../utils/formatters';
+import AccountImport from './AccountImport';
 
 export default function AccountList({ onViewAccount }) {
   const { state, dispatch } = useApp();
   const [formOpen, setFormOpen] = useState(false);
   const [editAccount, setEditAccount] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const getBalance = (accountId) => {
     return state.transactions
@@ -43,9 +45,10 @@ export default function AccountList({ onViewAccount }) {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5">Accounts</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>
-          Add Account
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" startIcon={<FileUpload />} onClick={() => setImportOpen(true)}>Import Accounts</Button>
+          <Button variant="contained" startIcon={<Add />} onClick={handleAdd}>Add Account</Button>
+        </Box>
       </Box>
 
       <Grid container spacing={2}>
@@ -105,6 +108,7 @@ export default function AccountList({ onViewAccount }) {
       )}
 
       <AccountForm open={formOpen} onClose={() => setFormOpen(false)} account={editAccount} />
+      <AccountImport open={importOpen} onClose={() => setImportOpen(false)} />
     </Box>
   );
 }

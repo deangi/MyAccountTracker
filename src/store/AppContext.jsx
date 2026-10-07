@@ -75,6 +75,8 @@ function reducer(state, action) {
     // Accounts
     case 'ADD_ACCOUNT':
       return { ...state, accounts: [...state.accounts, action.payload] };
+    case 'IMPORT_ACCOUNTS':
+      return { ...state, accounts: [...state.accounts, ...action.payload] };
     case 'UPDATE_ACCOUNT':
       return { ...state, accounts: state.accounts.map((a) => (a.id === action.payload.id ? action.payload : a)) };
     case 'DELETE_ACCOUNT':
@@ -309,7 +311,7 @@ export function AppProvider({ children }) {
   const dispatchWithDirty = useCallback((action) => {
     dispatch(action);
     const dataActions = [
-      'ADD_ACCOUNT', 'UPDATE_ACCOUNT', 'DELETE_ACCOUNT',
+      'ADD_ACCOUNT', 'IMPORT_ACCOUNTS', 'UPDATE_ACCOUNT', 'DELETE_ACCOUNT',
       'ADD_TRANSACTION', 'UPDATE_TRANSACTION', 'DELETE_TRANSACTION', 'IMPORT_TRANSACTIONS',
       'ADD_TRANSFER', 'UPDATE_TRANSFER', 'DELETE_TRANSFER',
       'ADD_PAYEE', 'DELETE_PAYEE',

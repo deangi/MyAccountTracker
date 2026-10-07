@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { Description, Launch } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
-import { createMultiSheetReportSpreadsheet, createReportSpreadsheet } from '../../services/googleSheets';
+import { buildV2LedgerData, createMultiSheetReportSpreadsheet, createReportSpreadsheet } from '../../services/googleSheets';
 
 const allValues = (items, key) => [...new Set(items.map((item) => item[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const money = (value) => Math.round(Number(value || 0) * 100) / 100;
@@ -84,17 +84,21 @@ export default function ReportManager() {
     setResult(null);
     setReportError('');
     try {
-      if (state.meta.version !== '2' || state.chartOfAccounts.length === 0) throw new Error('Balance Sheet and Profit & Loss reports require a loaded Format 2 account file.');
+      if (state.meta.version !== '2') throw new Error('Balance Sheet and Profit & Loss reports require a loaded Format 2 account file.');
       if (kind === 'profit-loss' && (!incomeFromDate || !incomeToDate || incomeToDate < incomeFromDate)) {
         throw new Error('Enter both Profit & Loss dates, with an end date on or after the start date.');
       }
       const sourceFileName = state.meta.title || state.spreadsheetTitle || 'MyAccountTracker';
       const runAt = new Date();
-      const entryDates = new Map(state.journalEntries.map((entry) => [entry.id, entry.date]));
-      const balances = new Map(state.chartOfAccounts.map((account) => [account.id, 0]));
+      // Reports must include committed changes that have not yet been reloaded
+      // from Google Sheets, so derive the V2 ledger from the live register state.
+      const ledger = buildV2LedgerData({ accounts: state.accounts, transactions: state.transactions });
+      const chartOfAccounts = ledger.chart_of_accounts;
+      const entryDates = new Map(ledger.journal_entries.map((entry) => [entry.id, entry.date]));
+      const balances = new Map(chartOfAccounts.map((account) => [account.id, 0]));
       const from = kind === 'profit-loss' ? incomeFromDate : '';
       const to = kind === 'profit-loss' ? incomeToDate : asOfDate;
-      for (const posting of state.postings) {
+      for (const posting of ledger.postings) {
         const date = entryDates.get(posting.journalEntryId) || '';
         if ((from && date < from) || (to && date > to)) continue;
         balances.set(posting.accountId, money((balances.get(posting.accountId) || 0) + Number(posting.debit || 0) - Number(posting.credit || 0)));
@@ -105,7 +109,7 @@ export default function ReportManager() {
       if (kind === 'balance-sheet') {
         title = `${sourceFileName} — Balance Sheet — ${asOfDate || 'Current'}`;
         sheetName = 'Balance Sheet';
-        const byClass = (accountClass) => state.chartOfAccounts
+        const byClass = (accountClass) => chartOfAccounts
           .filter((account) => account.accountClass === accountClass)
           .map((account) => ({ name: account.name, amount: money((account.normalBalance === 'credit' ? -1 : 1) * (balances.get(account.id) || 0)) }))
           .filter((item) => item.amount !== 0);
@@ -125,7 +129,7 @@ export default function ReportManager() {
       } else {
         title = `${sourceFileName} — Profit and Loss — ${incomeFromDate || 'Start'} to ${incomeToDate || 'Current'}`;
         sheetName = 'Profit and Loss';
-        const byClass = (accountClass) => state.chartOfAccounts
+        const byClass = (accountClass) => chartOfAccounts
           .filter((account) => account.accountClass === accountClass)
           .map((account) => ({ name: account.name, amount: money((account.normalBalance === 'credit' ? -1 : 1) * (balances.get(account.id) || 0)) }))
           .filter((item) => item.amount !== 0);

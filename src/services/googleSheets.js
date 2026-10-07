@@ -292,7 +292,7 @@ export async function writeAllTabs(spreadsheetId, appData) {
 
   // 4. Write fixed tabs
   const updateData = [];
-  const ledgerData = formatVersion === CURRENT_SHEET_FORMAT_VERSION ? buildLedgerData(appData) : {};
+  const ledgerData = formatVersion === CURRENT_SHEET_FORMAT_VERSION ? buildV2LedgerData(appData) : {};
   for (const [tabName, headers] of Object.entries(headersByTab)) {
     if (tabName === V2_LEDGER_TABS.CONVERSION_REPORT) continue;
     let records = ledgerData[tabName] || appData[tabName] || [];
@@ -374,7 +374,7 @@ export async function writeConversionReport(spreadsheetId, report) {
   });
 }
 
-function buildLedgerData(appData) {
+export function buildV2LedgerData(appData) {
   const accounts = appData.accounts || [];
   const transactions = appData.transactions || [];
   const chartAccounts = accounts.map((account) => ({

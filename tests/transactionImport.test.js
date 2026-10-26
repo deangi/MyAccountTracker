@@ -1,14 +1,57 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseTsvText, generateTsv } from '../src/utils/csv.js';
-import { buildImportedTransactions } from '../src/utils/transactionImport.js';
+import { parseCsvText, parseTsvText, generateTsv } from '../src/utils/csv.js';
+import { buildImportedTransactions, autoMapTransactionColumns } from '../src/utils/transactionImport.js';
+import { reduceAppState } from '../src/store/appReducer.js';
 
 const accounts = [{ id: 'checking', name: 'Checking' }];
 let nextId = 0;
 function build(parsed, columnMap, options = {}) {
   return buildImportedTransactions({ rows: parsed.data, columnMap, accounts, accountId: 'checking', generateUUID: () => `import-${++nextId}`, ...options });
 }
+
+test('US Bank CSV maps quoted names, memos, bank types, dates and exact amounts into the store', () => {
+  const csv = '\uFEFFDate,Transaction,Name,Memo,Amount\r\n'
+    + '2026-09-30,DEBIT,"Office, Inc.","Supplies, September",-1816.79\r\n'
+    + '2026-09-29,CREDIT,Customer,"Invoice\npaid","$ 200.00"\r\n'
+    + '2026-09-28,DEBIT,Utilities,Monthly bill,"-$ 5.44"';
+  const parsed = parseCsvText(csv);
+  assert.equal(parsed.meta.format, 'us-bank-checking');
+  const mapping = autoMapTransactionColumns(parsed.meta);
+  assert.deepEqual(mapping, { Date: 'date', Transaction: 'bankType', Name: 'payee', Memo: 'description', Amount: 'amount' });
+  const imported = build(parsed, mapping);
+  const next = reduceAppState({ accounts, transactions: [] }, { type: 'IMPORT_TRANSACTIONS', payload: imported });
+  assert.deepEqual(next.transactions.map(({ date, checkNum, payee, description, payment, deposit }) => ({ date, checkNum, payee, description, payment, deposit })), [
+    { date: '2026-09-28', checkNum: 'EFT', payee: 'Utilities', description: 'Monthly bill', payment: '5.44', deposit: '' },
+    { date: '2026-09-29', checkNum: 'DEP', payee: 'Customer', description: 'Invoice\npaid', payment: '', deposit: '200.00' },
+    { date: '2026-09-30', checkNum: 'EFT', payee: 'Office, Inc.', description: 'Supplies, September', payment: '1816.79', deposit: '' },
+  ]);
+  const cents = value => Math.round(Number(value || '0') * 100);
+  assert.equal(next.transactions.reduce((sum, transaction) => sum + cents(transaction.payment), 0), 182223);
+  assert.equal(next.transactions.reduce((sum, transaction) => sum + cents(transaction.deposit), 0), 20000);
+  assert(next.transactions.every(transaction => transaction.payment || transaction.deposit));
+});
+
+test('generic CSV uses the same mapping and signed amount rules as TSV', () => {
+  const parsed = parseCsvText('Date,Payee,Description,Amount\n10/6/2026,"Store, North",Office supplies,"($ 12.30)"');
+  assert.equal(parsed.meta.format, 'csv');
+  const transaction = build(parsed, autoMapTransactionColumns(parsed.meta))[0];
+  assert.equal(transaction.payee, 'Store, North');
+  assert.equal(transaction.description, 'Office supplies');
+  assert.equal(transaction.payment, '12.30');
+  assert.equal(transaction.deposit, '');
+});
+
+test('malformed CSV and mismatched bank types fail before any transaction is dispatched', () => {
+  for (const csv of ['', 'Date,Amount', 'Date,Amount,amount\n2026-10-01,1,2', 'Date,Amount\n"2026-10-01,1', 'Date,Amount\n2026-10-01,1,extra']) {
+    assert.throws(() => parseCsvText(csv));
+  }
+  const wrongSign = parseCsvText('Date,Transaction,Name,Memo,Amount\n2026-09-30,DEBIT,Store,Purchase,-5.44\n2026-09-29,CREDIT,Customer,Refund,-12.00');
+  assert.throws(() => build(wrongSign, autoMapTransactionColumns(wrongSign.meta)), /Transaction row 2: CREDIT does not match/);
+  wrongSign.data[1].Transaction = 'UNKNOWN';
+  assert.throws(() => build(wrongSign, autoMapTransactionColumns(wrongSign.meta)), /Transaction row 2: Bank Transaction type must/);
+});
 
 test('quoted, BOM-prefixed TSV imports real transactions, including embedded tab and newline', () => {
   const parsed = parseTsvText('\uFEFF"date"\t"Check #"\t"Payee"\t"Memo"\t"Amount"\r\n"10/6/2026"\t"EFT"\t"Electric Company"\t"October\tbill\npaid"\t"($125.40)"\r\n"2026-10-07"\t"DEP"\t"Employer"\t"Payroll"\t"$2,500.00"');

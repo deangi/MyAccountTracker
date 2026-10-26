@@ -26,7 +26,7 @@ function validateDate(value) {
 
 function validateCheckNum(value) {
   const normalized = value.trim().toUpperCase();
-  if (!normalized) return '';
+  if (!normalized) return 'Check # / Type is required';
   if (['DEP', 'EFT', 'TXFR'].includes(normalized) || /^\d+$/.test(normalized)) return '';
   return 'Use DEP, EFT, TXFR, or a numeric check number';
 }
@@ -225,7 +225,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
             setErrors((prev) => ({ ...prev, checkNum: validateCheckNum(normalized) }));
           }}
           renderInput={(params) => (
-            <TextField {...params} margin="dense" label="Check # / Type" fullWidth
+            <TextField {...params} margin="dense" label="Check # / Type" fullWidth required
               placeholder="Check number, DEP, EFT, or TXFR" error={!!errors.checkNum} helperText={errors.checkNum} />
           )}
         />

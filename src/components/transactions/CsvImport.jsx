@@ -8,6 +8,7 @@ import {
 import { HelpOutline } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import { parseTsv } from '../../utils/csv';
+import { buildImportedTransactions, autoMapTransactionColumns } from '../../utils/transactionImport';
 
 const FIELD_OPTIONS = [
   { value: '', label: '(skip)' },
@@ -19,37 +20,10 @@ const FIELD_OPTIONS = [
   { value: 'payment', label: 'Payment (out)' },
   { value: 'deposit', label: 'Deposit (in)' },
   { value: 'amount', label: 'Amount (signed +/-)' },
+  { value: 'cardAmount', label: 'Credit card amount (+ charge / − credit)' },
   { value: 'category', label: 'Category' },
   { value: 'cleared', label: 'Cleared' },
 ];
-
-// Maps incoming column names (lowercased) to our internal field names.
-// Covers both our own export format and Quicken register export columns.
-const COLUMN_AUTO_MAP = {
-  date: 'date',
-  account: 'account',
-  num: 'checkNum',
-  checknum: 'checkNum',
-  'check #': 'checkNum',
-  payee: 'payee',
-  description: 'payee',   // Quicken: Description = payee name
-  memo: 'description',    // Quicken: Memo = our description/notes
-  payment: 'payment',
-  'payment (money out)': 'payment',
-  deposit: 'deposit',
-  'deposit (money in)': 'deposit',
-  amount: 'amount',
-  category: 'category',
-  clr: 'cleared',
-  cleared: 'cleared',
-};
-
-// Convert M/D/YYYY or MM/DD/YYYY → YYYY-MM-DD; pass through YYYY-MM-DD unchanged.
-function convertDate(str) {
-  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
-  return str;
-}
 
 export default function CsvImport({ open, onClose, accountId }) {
   const { state, dispatch, generateUUID } = useApp();
@@ -63,21 +37,15 @@ export default function CsvImport({ open, onClose, accountId }) {
     if (!file) return;
 
     try {
+      setTsvData(null);
+      setColumnMap({});
       const result = await parseTsv(file);
       setTsvData(result);
       setError('');
 
-      // Auto-map columns by name
-      const autoMap = {};
-      result.meta.fields?.forEach((field) => {
-        const lower = field.toLowerCase().trim();
-        if (COLUMN_AUTO_MAP[lower]) {
-          autoMap[field] = COLUMN_AUTO_MAP[lower];
-        }
-      });
-      setColumnMap(autoMap);
-    } catch {
-      setError('Failed to parse file');
+      setColumnMap(autoMapTransactionColumns(result.meta));
+    } catch (err) {
+      setError(err.message || 'Failed to parse file');
     }
   };
 
@@ -88,75 +56,13 @@ export default function CsvImport({ open, onClose, accountId }) {
   const handleImport = () => {
     if (!tsvData) return;
 
-    // Check whether the Account column is mapped
-    const accountColMapped = Object.values(columnMap).includes('account');
-
-    // First pass: validate all account names before importing anything
-    if (accountColMapped) {
-      const unknownNames = new Set();
-      tsvData.data.forEach((row) => {
-        const [csvCol] = Object.entries(columnMap).find(([, f]) => f === 'account') || [];
-        if (!csvCol) return;
-        const name = String(row[csvCol] || '').trim();
-        if (name && !state.accounts.find((a) => a.name === name)) {
-          unknownNames.add(name);
-        }
-      });
-      if (unknownNames.size > 0) {
-        setError(
-          `Import aborted — the following account names were not found in this file:\n${[...unknownNames].join(', ')}\n\nCreate those accounts first, or set the Account column to (skip).`
-        );
-        return;
-      }
+    let transactions;
+    try {
+      transactions = buildImportedTransactions({ rows: tsvData.data, columnMap, accounts: state.accounts, accountId, generateUUID });
+    } catch (err) {
+      setError(err.message);
+      return;
     }
-
-    // Second pass: build transactions
-    const transactions = tsvData.data.map((row) => {
-      const txn = {
-        id: generateUUID(),
-        accountId,
-        date: '',
-        checkNum: '',
-        payee: '',
-        description: '',
-        payment: '',
-        deposit: '',
-        category: '',
-        cleared: 'FALSE',
-        reconciliationId: '',
-      };
-
-      Object.entries(columnMap).forEach(([csvCol, field]) => {
-        if (!field || row[csvCol] == null) return;
-        const raw = String(row[csvCol]).trim();
-
-        if (field === 'account') {
-          // Look up account by name and assign its id
-          const match = state.accounts.find((a) => a.name === raw);
-          if (match) txn.accountId = match.id;
-        } else if (field === 'amount') {
-          // Signed amount: positive → deposit, negative → payment
-          const val = parseFloat(raw.replace(/,/g, ''));
-          if (!isNaN(val)) {
-            if (val >= 0) txn.deposit = val.toFixed(2);
-            else txn.payment = Math.abs(val).toFixed(2);
-          }
-        } else if (field === 'cleared') {
-          // Quicken uses 'R' (reconciled) or '*' (cleared); we also accept 'TRUE'
-          txn.cleared =
-            raw === 'R' || raw === '*' || raw.toUpperCase() === 'TRUE' ? 'TRUE' : 'FALSE';
-        } else if (field === 'date') {
-          txn.date = convertDate(raw);
-        } else if (field === 'payment' || field === 'deposit') {
-          const val = parseFloat(raw.replace(/,/g, ''));
-          txn[field] = isNaN(val) ? '' : Math.abs(val).toFixed(2);
-        } else {
-          txn[field] = raw;
-        }
-      });
-
-      return txn;
-    });
 
     // Keep the master lists in step with imported register data.  The reports
     // use these lists, and matching is case-insensitive to prevent duplicates
@@ -178,28 +84,29 @@ export default function CsvImport({ open, onClose, accountId }) {
     addMissingListItems('payee', state.payees, 'IMPORT_PAYEES');
     addMissingListItems('category', state.categories, 'IMPORT_CATEGORIES');
     dispatch({ type: 'IMPORT_TRANSACTIONS', payload: transactions });
-    handleClose();
+    handleClose(transactions.length);
   };
 
-  const handleClose = () => {
+  const handleClose = (importedCount = 0) => {
     setTsvData(null);
     setColumnMap({});
     setError('');
-    onClose();
+    onClose(typeof importedCount === 'number' ? importedCount : 0);
   };
 
   const previewRows = tsvData?.data?.slice(0, 5) || [];
   const columns = tsvData?.meta?.fields || [];
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={() => handleClose()} maxWidth="lg" fullWidth>
       <DialogTitle>Import Transactions</DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Accepts tab-separated files (.txt, .tsv) including Quicken register exports.
-          Header and footer lines are detected and skipped automatically.
+          Header and footer lines are detected and skipped automatically. Citi credit card exports with padded tabs are detected automatically. Otherwise, each tab separates a column;
+          extra tabs create empty columns, not visual spacing. Map any “no heading” column that contains data.
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
@@ -210,6 +117,13 @@ export default function CsvImport({ open, onClose, accountId }) {
           <Button variant="text" startIcon={<HelpOutline />} onClick={() => setHelpOpen(true)}>Import Help</Button>
         </Box>
 
+        {tsvData?.meta?.format === 'citi-credit-card' && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Citi credit card export detected. Tab padding has been removed. Positive amounts become
+            payments (charges); negative amounts become deposits (credits). Description maps to Payee.
+            Status and Member Name are skipped unless you map them. Bank status does not reconcile transactions.
+          </Alert>
+        )}
         {tsvData && (
           <>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -259,15 +173,16 @@ export default function CsvImport({ open, onClose, accountId }) {
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose}>Cancel</Button>
-        <Button onClick={handleImport} variant="contained" disabled={!tsvData}>
+        <Button onClick={() => handleClose()}>Cancel</Button>
+        <Button onClick={handleImport} variant="contained" disabled={!tsvData?.data?.length}>
           Import {tsvData?.data?.length || 0} Transactions
         </Button>
       </DialogActions>
       <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="md" fullWidth>
         <HelpDialogTitle>Transaction Import Help</HelpDialogTitle>
         <HelpDialogContent>
-          <Typography variant="body2" sx={{ mb: 2 }}>Import currently accepts tab-separated `.txt` or `.tsv` files. The first row should contain column headings. Map the headings after selecting the file.</Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>Import currently accepts tab-separated `.txt` or `.tsv` files. The first row should contain column headings. Map the headings after selecting the file. Use one tab between fields. Consecutive tabs represent an intentionally empty field; do not add tabs just to align columns visually. Every data row must have the same number of columns as the headings.</Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>Citi files with Status, Date, Description, Amount, and Member Name headings are recognized automatically, including variable tab padding. Positive Citi amounts are charges (payments); negative Citi amounts are credits (deposits). Review the mapping and preview before importing.</Typography>
           <Typography variant="subtitle2">Example: payment and deposit columns</Typography>
           <Box component="pre" sx={{ p: 1.5, bgcolor: 'grey.100', overflow: 'auto', fontSize: '0.8rem' }}>{`Date\tCheck #\tPayee\tMemo\tPayment\tDeposit\tCategory
 10/06/2026\tEFT\tElectric Company\tOctober bill\t125.40\t\tUtilities

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  Box, Typography, Button, IconButton, Table, TableBody, TableCell,
+  Box, Typography, Button, IconButton, Table, TableBody, TableCell, Alert, Snackbar,
   TableContainer, TableHead, TableRow, Paper, Checkbox, TextField,
   MenuItem, useMediaQuery, useTheme, Card, CardContent, Chip, Stack,
 } from '@mui/material';
@@ -24,6 +24,20 @@ export default function TransactionTable({ accountId }) {
   const [filterCategory, setFilterCategory] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importMessage, setImportMessage] = useState('');
+  const handleImportClose = (count) => {
+    setImportOpen(false);
+    if (count > 0) {
+      setFilterPayee('');
+      setFilterCategory('');
+      setImportMessage(`Imported ${count} transaction(s). Transactions mapped to other accounts appear in those registers. Save the file to keep your changes.`);
+    }
+  };
+  const importFeedback = (
+    <Snackbar open={!!importMessage} onClose={() => setImportMessage('')}>
+      <Alert severity="success" onClose={() => setImportMessage('')}>{importMessage}</Alert>
+    </Snackbar>
+  );
 
   const accountTransactions = useMemo(() => {
     let txns = state.transactions.filter((t) => t.accountId === accountId);
@@ -138,7 +152,8 @@ export default function TransactionTable({ accountId }) {
 
         <TransactionForm open={formOpen} onClose={() => setFormOpen(false)} transaction={editTransaction} accountId={accountId} />
         <CsvExport open={exportOpen} onClose={() => setExportOpen(false)} accountId={accountId} />
-        <CsvImport open={importOpen} onClose={() => setImportOpen(false)} accountId={accountId} />
+        <CsvImport open={importOpen} onClose={handleImportClose} accountId={accountId} />
+        {importFeedback}
       </Box>
     );
   }
@@ -237,7 +252,8 @@ export default function TransactionTable({ accountId }) {
 
       <TransactionForm open={formOpen} onClose={() => setFormOpen(false)} transaction={editTransaction} accountId={accountId} />
       <CsvExport open={exportOpen} onClose={() => setExportOpen(false)} accountId={accountId} />
-      <CsvImport open={importOpen} onClose={() => setImportOpen(false)} accountId={accountId} />
+      <CsvImport open={importOpen} onClose={handleImportClose} accountId={accountId} />
+        {importFeedback}
     </Box>
   );
 }

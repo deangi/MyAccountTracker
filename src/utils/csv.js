@@ -1,20 +1,51 @@
 import Papa from 'papaparse';
 
-// Parse a tab-separated file, automatically detecting and skipping
-// header/footer lines (supports Quicken-style register export format).
-export function parseTsv(file) {
+function readTextFile(file, parser) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        resolve(parseTsvText(e.target.result));
-      } catch (err) {
-        reject(err);
-      }
+    reader.onload = (event) => {
+      try { resolve(parser(event.target.result)); }
+      catch (error) { reject(error); }
     };
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsText(file);
   });
+}
+
+export function parseCsv(file) {
+  return readTextFile(file, parseCsvText);
+}
+
+export function parseCsvText(text) {
+  const parsed = Papa.parse(text.replace(/^\uFEFF/, ''), {
+    delimiter: ',',
+    skipEmptyLines: 'greedy',
+  });
+  if (parsed.errors.length) throw new Error(`Could not read CSV file: ${parsed.errors[0].message}`);
+  const rows = parsed.data;
+  const clean = value => String(value ?? '').trim();
+  if (!rows.length || rows[0].length < 2) throw new Error('No CSV column headings were found.');
+  const fields = rows[0].map(clean);
+  if (fields.some(field => !field)) throw new Error('Every CSV column needs a heading.');
+  if (new Set(fields.map(field => field.toLowerCase())).size !== fields.length) {
+    throw new Error('CSV column headings must be unique. Rename duplicate columns before importing.');
+  }
+  const data = rows.slice(1).map((parts, index) => {
+    if (parts.length !== fields.length) {
+      throw new Error(`CSV row ${index + 2} has ${parts.length} columns; the headings have ${fields.length}. Check quotes around commas and line breaks inside fields.`);
+    }
+    return Object.fromEntries(fields.map((field, column) => [field, clean(parts[column])]));
+  });
+  if (!data.length) throw new Error('No transaction rows were found after the CSV column headings.');
+  const format = fields.map(field => field.toLowerCase()).join('|') === 'date|transaction|name|memo|amount'
+    ? 'us-bank-checking' : 'csv';
+  return { data, meta: { fields, format } };
+}
+
+// Parse a tab-separated file, automatically detecting and skipping
+// header/footer lines (supports Quicken-style register export format).
+export function parseTsv(file) {
+  return readTextFile(file, parseTsvText);
 }
 
 // Parse quoted fields before locating the header; quotes, embedded tabs, BOMs,

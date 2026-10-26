@@ -23,9 +23,11 @@ export function autoMapTransactionColumns({ fields = [], format }) {
   const hasPayee = fields.some((field) => field.trim().toLowerCase() === 'payee');
   return Object.fromEntries(fields.flatMap((field) => {
     const lower = field.trim().toLowerCase();
-    const mapped = lower === 'amount' && format === 'citi-credit-card'
-      ? 'cardAmount' : lower === 'description' && hasPayee
-        ? 'description' : COLUMN_AUTO_MAP[lower];
+    const mapped = format === 'us-bank-checking' && lower === 'transaction'
+      ? 'bankType' : format === 'us-bank-checking' && lower === 'name'
+        ? 'payee' : lower === 'amount' && format === 'citi-credit-card'
+          ? 'cardAmount' : lower === 'description' && hasPayee
+            ? 'description' : COLUMN_AUTO_MAP[lower];
     return mapped ? [[field, mapped]] : [];
   }));
 }
@@ -56,6 +58,7 @@ export function buildImportedTransactions({ rows, columnMap, accounts, accountId
   if (!fields.some((field) => ['payment', 'deposit', 'amount', 'cardAmount'].includes(field))) throw new Error('Map Payment, Deposit, or Amount before importing.');
   if (new Set(fields).size !== fields.length) throw new Error('Map each transaction field only once; set duplicate mappings to (skip).');
   if (fields.filter((field) => ['amount', 'cardAmount'].includes(field)).length && fields.filter((field) => ['amount', 'cardAmount', 'payment', 'deposit'].includes(field)).length > 1) throw new Error('Map either a signed Amount, a credit card Amount, or separate Payment/Deposit columns, not both.');
+  if (fields.includes('bankType') && !fields.includes('amount')) throw new Error('Bank Transaction type requires a signed Amount column.');
   const accountByName = new Map(accounts.map((account) => [account.name.trim().toLowerCase(), account]));
   return rows.map((row, index) => {
     try {
@@ -72,12 +75,22 @@ export function buildImportedTransactions({ rows, columnMap, accounts, accountId
         payment: '', deposit: '', reconciliationId: '',
         cleared: ['R', '*', 'TRUE'].includes((values.cleared || '').toUpperCase()) ? 'TRUE' : 'FALSE',
       };
+      if (fields.includes('bankType')) {
+        const bankType = (values.bankType || '').toUpperCase();
+        if (!['DEBIT', 'CREDIT'].includes(bankType)) throw new Error(`Bank Transaction type must be DEBIT or CREDIT; found "${values.bankType || ''}".`);
+        if (fields.includes('checkNum')) throw new Error('Map either Check # or Bank Transaction type, not both.');
+        txn.checkNum = bankType === 'DEBIT' ? 'EFT' : 'DEP';
+      }
       if (fields.includes('amount') || fields.includes('cardAmount')) {
         const isCardAmount = fields.includes('cardAmount');
         const amount = importAmount(isCardAmount ? values.cardAmount : values.amount);
         if (amount == null) throw new Error('Amount is empty.');
+        if (fields.includes('bankType') && ((values.bankType.toUpperCase() === 'DEBIT' && amount > 0) || (values.bankType.toUpperCase() === 'CREDIT' && amount < 0))) {
+          throw new Error(`${values.bankType.toUpperCase()} does not match the sign of Amount ${values.amount}.`);
+        }
         const isPayment = isCardAmount ? amount >= 0 : amount < 0;
-        txn[isPayment ? 'payment' : 'deposit'] = Math.abs(amount).toFixed(2);
+        const destination = amount === 0 && fields.includes('bankType') ? (values.bankType.toUpperCase() === 'DEBIT' ? 'payment' : 'deposit') : (isPayment ? 'payment' : 'deposit');
+        txn[destination] = Math.abs(amount).toFixed(2);
       } else {
         const payment = importAmount(values.payment), deposit = importAmount(values.deposit);
         if (payment == null && deposit == null) throw new Error('Payment and Deposit are both empty.');

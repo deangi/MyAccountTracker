@@ -6,6 +6,8 @@ import {
 import { Description, Launch } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import { buildV2LedgerData, createMultiSheetReportSpreadsheet, createReportSpreadsheet } from '../../services/googleSheets';
+import { formatCurrency, toISODate } from '../../utils/formatters';
+import { buildNetWorthStatement, netWorthStatementRows } from '../../utils/netWorth';
 
 const allValues = (items, key) => [...new Set(items.map((item) => item[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const money = (value) => Math.round(Number(value || 0) * 100) / 100;
@@ -21,7 +23,7 @@ export default function ReportManager() {
   const [categories, setCategories] = useState([]);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [asOfDate, setAsOfDate] = useState(new Date().toISOString().slice(0, 10));
+  const [asOfDate, setAsOfDate] = useState(toISODate(new Date().toISOString()));
   const [incomeFromDate, setIncomeFromDate] = useState('');
   const [incomeToDate, setIncomeToDate] = useState(new Date().toISOString().slice(0, 10));
   const [running, setRunning] = useState(false);
@@ -30,6 +32,32 @@ export default function ReportManager() {
 
   const payeeOptions = useMemo(() => allValues(state.transactions, 'payee'), [state.transactions]);
   const categoryOptions = useMemo(() => allValues(state.transactions, 'category'), [state.transactions]);
+  const netWorthPreview = useMemo(() => {
+    try { return { statement: buildNetWorthStatement({ accounts: state.accounts, transactions: state.transactions, asOfDate }) }; }
+    catch (error) { return { error: error.message }; }
+  }, [state.accounts, state.transactions, asOfDate]);
+
+  const runNetWorth = async () => {
+    setRunning(true);
+    setResult(null);
+    setReportError('');
+    try {
+      if (netWorthPreview.error) throw new Error(netWorthPreview.error);
+      const statement = netWorthPreview.statement;
+      const sourceFileName = state.meta.title || state.spreadsheetTitle || 'MyAccountTracker';
+      const title = `${sourceFileName} — Net Worth Statement — ${asOfDate}`;
+      const rows = [
+        ...reportHeader('Net Worth Statement', sourceFileName, new Date(), ['As of', asOfDate]),
+        ...netWorthStatementRows(statement),
+      ];
+      const spreadsheetId = await createReportSpreadsheet(title, 'Net Worth Statement', rows);
+      setResult({ title, count: null, url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}` });
+    } catch (error) {
+      setReportError(error.message || 'Could not create the Net Worth Statement.');
+    } finally {
+      setRunning(false);
+    }
+  };
 
   const runTransactionList = async () => {
     setRunning(true);
@@ -208,6 +236,39 @@ export default function ReportManager() {
         <Button sx={{ mt: 2 }} variant="contained" startIcon={<Description />} disabled={running} onClick={runTransactionList}>
           {running ? 'Creating report…' : 'Create Transaction List'}
         </Button>
+      </Box>
+      <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2, mt: 2 }}>
+        <Typography variant="h6">Net Worth Statement</Typography>
+        <Typography variant="body2" color="text.secondary">Every account appears under Assets or Liabilities. Values come from account transactions through the selected date. Debt balances are shown as amounts owed.</Typography>
+        <Typography variant="body2" color="text.secondary">To enter an opening value, add a Deposit to an asset account or a Payment to a debt account.</Typography>
+        <TextField sx={{ mt: 1 }} label="As of date" type="date" value={asOfDate} onChange={(event) => setAsOfDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+        {netWorthPreview.error ? <Alert severity="error" sx={{ mt: 2 }}>{netWorthPreview.error}</Alert> : (
+          <Box sx={{ mt: 2 }}>
+            {[
+              ['Assets', netWorthPreview.statement.assets, netWorthPreview.statement.totalAssets],
+              ['Liabilities', netWorthPreview.statement.liabilities, netWorthPreview.statement.totalLiabilities],
+            ].map(([heading, accounts, total]) => (
+              <Box key={heading} sx={{ mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{heading}</Typography>
+                {accounts.map(account => (
+                  <Box key={account.id} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: 0.25 }}>
+                    <Typography variant="body2">{account.name}</Typography>
+                    <Typography variant="body2">{formatCurrency(account.amount)}</Typography>
+                  </Box>
+                ))}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, borderTop: 1, borderColor: 'divider', mt: 1, pt: 0.5 }}>
+                  <Typography variant="subtitle2">Total {heading}</Typography>
+                  <Typography variant="subtitle2">{formatCurrency(total)}</Typography>
+                </Box>
+              </Box>
+            ))}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, borderTop: 2, borderColor: 'text.primary', pt: 1 }}>
+              <Typography variant="h6">Net Worth</Typography>
+              <Typography variant="h6">{formatCurrency(netWorthPreview.statement.netWorth)}</Typography>
+            </Box>
+          </Box>
+        )}
+        <Button sx={{ mt: 2 }} variant="contained" startIcon={<Description />} disabled={running || !!netWorthPreview.error} onClick={runNetWorth}>Create Net Worth Statement</Button>
       </Box>
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2, mt: 2 }}>
         <Typography variant="h6">Balance Sheet</Typography>

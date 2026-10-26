@@ -4,8 +4,8 @@ import {
   TextField, Button, MenuItem,
 } from '@mui/material';
 import { useApp } from '../../store/AppContext';
+import { ACCOUNT_TYPES } from '../../utils/accountTypes';
 
-const ACCOUNT_TYPES = ['checking', 'savings', 'credit card', 'loan', 'equity'];
 
 export default function AccountForm({ open, onClose, account }) {
   const { dispatch, generateUUID } = useApp();
@@ -71,8 +71,8 @@ export default function AccountForm({ open, onClose, account }) {
           margin="dense" label="Type" fullWidth select
           value={form.type} onChange={handleChange('type')}
         >
-          {ACCOUNT_TYPES.map((t) => (
-            <MenuItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</MenuItem>
+          {ACCOUNT_TYPES.map((type) => (
+            <MenuItem key={type.value} value={type.value}>{type.label}</MenuItem>
           ))}
         </TextField>
         <TextField

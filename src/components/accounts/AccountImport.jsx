@@ -5,8 +5,8 @@ import {
   Paper, Typography,
 } from '@mui/material';
 import { useApp } from '../../store/AppContext';
+import { ACCOUNT_TYPE_VALUES } from '../../utils/accountTypes';
 
-const ACCOUNT_TYPES = ['checking', 'savings', 'credit card', 'loan', 'equity'];
 
 function parseAccountFile(text) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
@@ -52,7 +52,7 @@ export default function AccountImport({ open, onClose }) {
         const parsed = parseAccountFile(reader.result);
         const names = new Set(state.accounts.map((account) => account.name.trim().toLowerCase()));
         const seen = new Set();
-        const invalidType = parsed.find((account) => !ACCOUNT_TYPES.includes(account.type));
+        const invalidType = parsed.find((account) => !ACCOUNT_TYPE_VALUES.includes(account.type));
         const duplicate = parsed.find((account) => {
           const key = account.name.toLowerCase();
           const found = names.has(key) || seen.has(key);
@@ -87,7 +87,7 @@ export default function AccountImport({ open, onClose }) {
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Import accounts before importing a company transaction list that maps an Account column to account names.</Typography>
-        <Typography variant="body2" sx={{ mb: 2 }}>Use a tab-separated `.txt` or `.tsv` file. Required: `Account Name`. Optional: `Nickname`, `Type`, `Bank Address`, `Phone`, `Website`. Types: checking, savings, credit card, loan, equity.</Typography>
+        <Typography variant="body2" sx={{ mb: 2 }}>Use a tab-separated `.txt` or `.tsv` file. Required: `Account Name`. Optional: `Nickname`, `Type`, `Bank Address`, `Phone`, `Website`. Types: {ACCOUNT_TYPE_VALUES.join(', ')}.</Typography>
         <Button variant="outlined" component="label" sx={{ mb: 2 }}>
           Select Account File
           <input type="file" accept=".txt,.tsv" hidden onChange={selectFile} />

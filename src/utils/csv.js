@@ -1,3 +1,5 @@
+import Papa from 'papaparse';
+
 // Parse a tab-separated file, automatically detecting and skipping
 // header/footer lines (supports Quicken-style register export format).
 export function parseTsv(file) {
@@ -15,64 +17,66 @@ export function parseTsv(file) {
   });
 }
 
-// Matches M/D/YYYY, MM/DD/YYYY, or YYYY-MM-DD
-function looksLikeDate(str) {
-  return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str) || /^\d{4}-\d{2}-\d{2}$/.test(str);
-}
-
-function parseTsvText(text) {
-  const lines = text.split(/\r?\n/);
-
-  // Find the column header row: a tab-separated line that contains 'Date'
-  let headerLineIndex = -1;
-  let headerFields = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const parts = lines[i].split('\t').map((p) => p.trim());
-    if (parts.includes('Date') && parts.length >= 3) {
-      headerLineIndex = i;
-      headerFields = parts;
-      break;
-    }
-  }
-
-  // Fallback: treat the first non-empty line as the header
-  if (headerLineIndex === -1) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim()) {
-        headerLineIndex = i;
-        headerFields = lines[i].split('\t').map((p) => p.trim());
-        break;
+// Parse quoted fields before locating the header; quotes, embedded tabs, BOMs,
+// and line breaks inside exported memo fields must not change column alignment.
+export function parseTsvText(text) {
+  const parsed = Papa.parse(text.replace(/^\uFEFF/, ''), {
+    delimiter: '\t',
+    skipEmptyLines: 'greedy',
+  });
+  if (parsed.errors.length) throw new Error(`Could not read tab-separated file: ${parsed.errors[0].message}`);
+  const rows = parsed.data;
+  const clean = (value) => String(value ?? '').trim();
+  let headerIndex = rows.findIndex((row) => row.length >= 2 && row.some((value) => clean(value).toLowerCase() === 'date'));
+  if (headerIndex < 0) headerIndex = rows.findIndex((row) => row.length >= 2);
+  if (headerIndex < 0) throw new Error('No tab-separated column headings were found.');
+  const headings = rows[headerIndex].map(clean);
+  // This Citi export pads columns with variable runs of tabs (including at
+  // the edges). Restrict normalization to its exact five-column signature.
+  const citiHeaders = ['status', 'date', 'description', 'amount', 'member name'];
+  const isCiti = headings.filter(Boolean).map((field) => field.toLowerCase()).join('|') === citiHeaders.join('|');
+  if (isCiti) {
+    const fields = headings.filter(Boolean);
+    const data = rows.slice(headerIndex + 1).map((parts, index) => {
+      const values = parts.map(clean).filter(Boolean);
+      if (values.length !== fields.length) {
+        throw new Error(`Citi transaction row ${index + 1}: expected Status, Date, Description, Amount, and Member Name. A value is missing or there is an unexpected tab inside a value.`);
       }
-    }
-  }
-
-  if (headerLineIndex === -1) return { data: [], meta: { fields: [] } };
-
-  const dateColIndex = headerFields.indexOf('Date');
-
-  // Collect data rows — only those whose Date column contains a real date
-  const data = [];
-  for (let i = headerLineIndex + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.trim()) continue;
-
-    const parts = line.split('\t');
-    const datePart = dateColIndex >= 0 ? (parts[dateColIndex] || '').trim() : '';
-
-    if (dateColIndex >= 0 && !looksLikeDate(datePart)) continue;
-
-    const row = {};
-    headerFields.forEach((name, idx) => {
-      if (name) row[name] = (parts[idx] || '').trim();
+      if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(values[1]) && !/^\d{4}-\d{1,2}-\d{1,2}$/.test(values[1])) {
+        throw new Error(`Citi transaction row ${index + 1}: the Date column could not be identified safely.`);
+      }
+      return Object.fromEntries(fields.map((field, column) => [field, values[column]]));
     });
+    if (!data.length) throw new Error('No Citi transaction rows were found.');
+    return { data, meta: { fields, format: 'citi-credit-card' } };
+  }
+  const nonemptyFields = headings.filter(Boolean);
+  if (new Set(nonemptyFields.map((field) => field.toLowerCase())).size !== nonemptyFields.length) {
+    throw new Error('Column headings must be unique. Rename duplicate columns before importing.');
+  }
+  const usedNames = new Set(nonemptyFields.map((field) => field.toLowerCase()));
+  const fields = headings.map((heading, index) => {
+    if (heading) return heading;
+    let name = `Column ${index + 1} (no heading)`;
+    while (usedNames.has(name.toLowerCase())) name += ' ';
+    usedNames.add(name.toLowerCase());
+    return name;
+  });
+  const data = [];
+  for (const [index, parts] of rows.slice(headerIndex + 1).entries()) {
+    const firstValue = parts.map(clean).find(Boolean) || '';
+    // Skip known export footers, never discard transaction rows by date format.
+    if (/^(total deposits|total payments|net total|total|balance)\b/i.test(firstValue) && parts.filter((value) => clean(value)).length <= 2) continue;
+    if (parts.length < 2) continue;
+    if (parts.length !== fields.length) {
+      throw new Error(`File row ${headerIndex + index + 2} has ${parts.length} columns; the headings have ${fields.length}. Each tab separates a column. Remove tabs used only for visual alignment, and keep empty fields as consecutive tabs consistently.`);
+    }
+    const row = {};
+    fields.forEach((name, index) => { if (name) row[name] = clean(parts[index]); });
     data.push(row);
   }
-
-  return {
-    data,
-    meta: { fields: headerFields.filter((f) => f) },
-  };
+  if (!data.length) throw new Error('No transaction rows were found after the column headings.');
+  return { data, meta: { fields } };
 }
 
 // Generate a tab-separated file with optional title/dateRange header

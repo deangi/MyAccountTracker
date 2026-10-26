@@ -1,5 +1,6 @@
 import { getAccessToken } from './googleAuth';
 import { GOOGLE_API_KEY, APP_VERSION, CURRENT_SHEET_FORMAT_VERSION, SHEET_HEADERS, SHEET_TABS, TRANSACTION_HEADERS, TXN_TAB_PREFIX, V2_LEDGER_TABS, getSheetHeadersForVersion, getSheetTabsForVersion, sanitizeTabName } from '../config';
+import { netWorthClassFor } from '../utils/accountTypes';
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
@@ -457,9 +458,8 @@ export function buildV2LedgerData(appData) {
 
 function accountClassFor(type = '') {
   const normalized = type.toLowerCase();
-  if (['credit card', 'credit-card', 'loan', 'mortgage', 'liability'].includes(normalized)) return 'liability';
   if (normalized === 'equity') return 'equity';
-  return 'asset';
+  return netWorthClassFor(normalized);
 }
 
 // Google Picker to select a spreadsheet

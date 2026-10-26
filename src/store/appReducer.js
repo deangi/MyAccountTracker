@@ -1,4 +1,4 @@
-function ensureTransactionNamesInMasterList(items = [], transactions = [], field, idPrefix) {
+export function ensureTransactionNamesInMasterList(items = [], transactions = [], field, idPrefix) {
   const known = new Set(items.map((item) => item.name.trim().toLocaleLowerCase()));
   const additions = [];
   for (const transaction of transactions) {

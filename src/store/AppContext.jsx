@@ -1,4 +1,4 @@
-import { reduceAppState } from './appReducer';
+import { ensureTransactionNamesInMasterList, reduceAppState } from './appReducer';
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
 import { readAllTabs, writeAllTabs, createSpreadsheet } from '../services/googleSheets';
 import { migrateV1ToV2, synchronizeAndValidateV2Ledger } from '../services/formatMigration';

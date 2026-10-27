@@ -28,8 +28,11 @@ const FIELD_OPTIONS = [
 
 export default function CsvImport({ open, onClose, accountId }) {
   const { state, dispatch, generateUUID } = useApp();
+  const [importType, setImportType] = useState('');
   const [importData, setImportData] = useState(null);
   const [columnMap, setColumnMap] = useState({});
+  const [constantRows, setConstantRows] = useState([]);
+  const [constantFieldToAdd, setConstantFieldToAdd] = useState('');
   const [error, setError] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -40,7 +43,18 @@ export default function CsvImport({ open, onClose, accountId }) {
     try {
       setImportData(null);
       setColumnMap({});
-      const result = await (file.name.toLowerCase().endsWith('.csv') ? parseCsv(file) : parseTsv(file));
+      setConstantRows([]);
+      setConstantFieldToAdd('');
+      const isCsv = importType === 'csv';
+      const extensionMatches = isCsv
+        ? file.name.toLowerCase().endsWith('.csv')
+        : /\.(txt|tsv)$/i.test(file.name);
+      if (!extensionMatches) {
+        throw new Error(isCsv ? 'Select a .csv file for CSV import.' : 'Select a .txt or .tsv file for TSV import.');
+      }
+      const result = isCsv
+        ? await parseCsv(file)
+        : await parseTsv(file, importType === 'citi-tsv' ? 'citi-credit-card' : 'tsv');
       setImportData(result);
       setError('');
 
@@ -61,7 +75,8 @@ export default function CsvImport({ open, onClose, accountId }) {
 
     let transactions;
     try {
-      transactions = buildImportedTransactions({ rows: importData.data, columnMap, accounts: state.accounts, accountId, generateUUID });
+      const constantValues = Object.fromEntries(constantRows.map(({ field, value }) => [field, value]));
+      transactions = buildImportedTransactions({ rows: importData.data, columnMap, constantValues, accounts: state.accounts, accountId, generateUUID });
     } catch (err) {
       setError(err.message);
       return;
@@ -91,8 +106,11 @@ export default function CsvImport({ open, onClose, accountId }) {
   };
 
   const handleClose = (importedCount = 0) => {
+    setImportType('');
     setImportData(null);
     setColumnMap({});
+    setConstantRows([]);
+    setConstantFieldToAdd('');
     setError('');
     onClose(typeof importedCount === 'number' ? importedCount : 0);
   };
@@ -108,20 +126,36 @@ export default function CsvImport({ open, onClose, accountId }) {
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Accepts CSV (.csv) and tab-separated (.txt, .tsv) transaction files. Review the column mapping and preview before importing.
-          Citi credit card exports with padded tabs are detected automatically. For other tab-separated files, each tab separates a column.
+          Choose the import type before selecting your file.
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-          <Button variant="outlined" component="label">
+          <TextField
+            select size="small" label="Import type" value={importType}
+            onChange={(event) => {
+              setImportType(event.target.value);
+              setImportData(null);
+              setColumnMap({});
+              setConstantRows([]);
+              setConstantFieldToAdd('');
+              setError('');
+            }}
+            sx={{ minWidth: 190 }}
+          >
+            <MenuItem value="csv">CSV</MenuItem>
+            <MenuItem value="tsv">TSV</MenuItem>
+            <MenuItem value="citi-tsv">TSV (Citi Bank)</MenuItem>
+          </TextField>
+          <Button variant="outlined" component="label" disabled={!importType}>
             Select File
-            <input type="file" accept=".csv,.txt,.tsv" hidden onChange={handleFileSelect} />
+            <input type="file" accept={importType === 'csv' ? '.csv' : '.txt,.tsv'} hidden onChange={handleFileSelect} disabled={!importType} />
           </Button>
           <Button variant="text" startIcon={<HelpOutline />} onClick={() => setHelpOpen(true)}>Import Help</Button>
         </Box>
 
         {importData?.meta?.format === 'citi-credit-card' && (
           <Alert severity="info" sx={{ mb: 2 }}>
-            Citi credit card export detected. Tab padding has been removed. Positive amounts become
+            Citi Bank TSV selected. Tab padding has been removed. Positive amounts become
             payments (charges); negative amounts become deposits (credits). Description maps to Payee.
             Status and Member Name are skipped unless you map them. Bank status does not reconcile transactions.
           </Alert>
@@ -150,10 +184,52 @@ export default function CsvImport({ open, onClose, accountId }) {
                   sx={{ minWidth: 150 }}
                 >
                   {FIELD_OPTIONS.map((opt) => (
-                    <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                    <MenuItem key={opt.value} value={opt.value} disabled={!!opt.value && constantRows.some(row => row.field === opt.value)}>{opt.label}</MenuItem>
                   ))}
                 </TextField>
               ))}
+            </Box>
+
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Constant Values (optional)</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Set a transaction field to the same value on every imported row, such as a category or check type.
+            </Typography>
+            {constantRows.map((row) => (
+              <Box key={row.id} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                <TextField
+                  select size="small" label="Field" value={row.field}
+                  onChange={(event) => setConstantRows(previous => previous.map(item => item.id === row.id ? { ...item, field: event.target.value } : item))}
+                  sx={{ minWidth: 180 }}
+                >
+                  {FIELD_OPTIONS.filter(option => option.value && (!Object.values(columnMap).includes(option.value) || row.field === option.value) && (!constantRows.some(item => item.id !== row.id && item.field === option.value) || row.field === option.value)).map(option => (
+                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  size="small" label="Value for every transaction" value={row.value}
+                  onChange={(event) => setConstantRows(previous => previous.map(item => item.id === row.id ? { ...item, value: event.target.value } : item))}
+                  sx={{ minWidth: 220 }}
+                />
+                <Button color="inherit" onClick={() => setConstantRows(previous => previous.filter(item => item.id !== row.id))}>Remove</Button>
+              </Box>
+            ))}
+            <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TextField
+                select size="small" label="Add constant for" value={constantFieldToAdd}
+                onChange={(event) => setConstantFieldToAdd(event.target.value)} sx={{ minWidth: 180 }}
+              >
+                <MenuItem value="">Select a field</MenuItem>
+                {FIELD_OPTIONS.filter(option => option.value && !Object.values(columnMap).includes(option.value) && !constantRows.some(row => row.field === option.value)).map(option => (
+                  <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                ))}
+              </TextField>
+              <Button
+                variant="outlined" disabled={!constantFieldToAdd}
+                onClick={() => {
+                  setConstantRows(previous => [...previous, { id: previous.reduce((max, row) => Math.max(max, row.id), 0) + 1, field: constantFieldToAdd, value: '' }]);
+                  setConstantFieldToAdd('');
+                }}
+              >Add constant</Button>
             </Box>
 
             <Typography variant="subtitle2" sx={{ mb: 1 }}>Preview (first 5 rows)</Typography>
@@ -191,8 +267,8 @@ export default function CsvImport({ open, onClose, accountId }) {
         <HelpDialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>Import accepts comma-separated `.csv` and tab-separated `.txt` or `.tsv` files. The first CSV row should contain column headings. CSV values containing commas or line breaks must be quoted. Map the headings after selecting the file and review the preview. Every data row must have the same number of columns as the headings.</Typography>
           <Typography variant="body2" sx={{ mb: 2 }}>For tab-separated files, use one tab between fields. Consecutive tabs represent an intentionally empty field; do not add tabs just to align columns visually.</Typography>
-          <Typography variant="body2" sx={{ mb: 2 }}>Citi files with Status, Date, Description, Amount, and Member Name headings are recognized automatically, including variable tab padding. Positive Citi amounts are charges (payments); negative Citi amounts are credits (deposits). Review the mapping and preview before importing.</Typography>
-          <Typography variant="body2" sx={{ mb: 2 }}>US Bank checking CSV columns Date, Transaction, Name, Memo, and Amount are recognized automatically. DEBIT amounts must be negative and become EFT payments; CREDIT amounts must be positive and become DEP deposits.</Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>Choose TSV (Citi Bank) for files with Status, Date, Description, Amount, and Member Name headings. That option handles Citi's variable tab padding. Positive Citi amounts are charges (payments); negative Citi amounts are credits (deposits).</Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>Choose CSV for US Bank checking files with Date, Transaction, Name, Memo, and Amount columns. DEBIT amounts must be negative and become EFT payments; CREDIT amounts must be positive and become DEP deposits.</Typography>
           <Typography variant="subtitle2">Example: payment and deposit columns</Typography>
           <Box component="pre" sx={{ p: 1.5, bgcolor: 'grey.100', overflow: 'auto', fontSize: '0.8rem' }}>{`Date\tCheck #\tPayee\tMemo\tPayment\tDeposit\tCategory
 10/06/2026\tEFT\tElectric Company\tOctober bill\t125.40\t\tUtilities

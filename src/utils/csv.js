@@ -44,13 +44,13 @@ export function parseCsvText(text) {
 
 // Parse a tab-separated file, automatically detecting and skipping
 // header/footer lines (supports Quicken-style register export format).
-export function parseTsv(file) {
-  return readTextFile(file, parseTsvText);
+export function parseTsv(file, format = 'auto') {
+  return readTextFile(file, text => parseTsvText(text, { format }));
 }
 
 // Parse quoted fields before locating the header; quotes, embedded tabs, BOMs,
 // and line breaks inside exported memo fields must not change column alignment.
-export function parseTsvText(text) {
+export function parseTsvText(text, { format = 'auto' } = {}) {
   const parsed = Papa.parse(text.replace(/^\uFEFF/, ''), {
     delimiter: '\t',
     skipEmptyLines: 'greedy',
@@ -65,8 +65,12 @@ export function parseTsvText(text) {
   // This Citi export pads columns with variable runs of tabs (including at
   // the edges). Restrict normalization to its exact five-column signature.
   const citiHeaders = ['status', 'date', 'description', 'amount', 'member name'];
-  const isCiti = headings.filter(Boolean).map((field) => field.toLowerCase()).join('|') === citiHeaders.join('|');
+  const hasCitiHeaders = headings.filter(Boolean).map((field) => field.toLowerCase()).join('|') === citiHeaders.join('|');
+  const isCiti = format === 'citi-credit-card' || (format === 'auto' && hasCitiHeaders);
   if (isCiti) {
+    if (headings.filter(Boolean).map((field) => field.toLowerCase()).join('|') !== citiHeaders.join('|')) {
+      throw new Error('TSV (Citi Bank) requires Status, Date, Description, Amount, and Member Name columns.');
+    }
     const fields = headings.filter(Boolean);
     const data = rows.slice(headerIndex + 1).map((parts, index) => {
       const values = parts.map(clean).filter(Boolean);
@@ -107,7 +111,7 @@ export function parseTsvText(text) {
     data.push(row);
   }
   if (!data.length) throw new Error('No transaction rows were found after the column headings.');
-  return { data, meta: { fields } };
+  return { data, meta: { fields, format: 'tsv' } };
 }
 
 // Generate a tab-separated file with optional title/dateRange header

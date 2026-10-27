@@ -51,9 +51,12 @@ function importAmount(value) {
   return Number(normalized);
 }
 
-export function buildImportedTransactions({ rows, columnMap, accounts, accountId, generateUUID }) {
+export function buildImportedTransactions({ rows, columnMap, constantValues = {}, accounts, accountId, generateUUID }) {
   if (!rows.length) throw new Error('No transactions were found to import.');
-  const fields = Object.values(columnMap).filter(Boolean);
+  const constantFields = Object.keys(constantValues);
+  if (constantFields.some(field => !field)) throw new Error('Choose a field for each constant value.');
+  if (Object.values(constantValues).some(value => !String(value ?? '').trim())) throw new Error('Enter a value for each constant field or remove the empty constant.');
+  const fields = [...Object.values(columnMap).filter(Boolean), ...constantFields];
   if (!fields.includes('date')) throw new Error('Map a column to Date before importing.');
   if (!fields.some((field) => ['payment', 'deposit', 'amount', 'cardAmount'].includes(field))) throw new Error('Map Payment, Deposit, or Amount before importing.');
   if (new Set(fields).size !== fields.length) throw new Error('Map each transaction field only once; set duplicate mappings to (skip).');
@@ -62,7 +65,7 @@ export function buildImportedTransactions({ rows, columnMap, accounts, accountId
   const accountByName = new Map(accounts.map((account) => [account.name.trim().toLowerCase(), account]));
   return rows.map((row, index) => {
     try {
-      const values = {};
+      const values = Object.fromEntries(Object.entries(constantValues).map(([field, value]) => [field, String(value).trim()]));
       for (const [column, field] of Object.entries(columnMap)) {
         if (field) values[field] = String(row[column] ?? '').trim();
       }

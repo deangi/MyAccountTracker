@@ -135,6 +135,8 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
       cleared: isEdit ? transaction.cleared : 'FALSE',
       payment: form.payment || '',
       deposit: form.deposit || '',
+      payee: form.payee.trim(),
+      category: form.category.trim(),
       checkNum: form.checkNum.trim().toUpperCase(),
     };
 
@@ -161,16 +163,18 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
       });
 
       lastUsedDate = form.date;
-
-      // Auto-add payee if new
-      if (form.payee && !state.payees.find((p) => p.name === form.payee)) {
-        dispatch({ type: 'ADD_PAYEE', payload: { id: generateUUID(), name: form.payee } });
-      }
-      // Auto-add category if new
-      if (form.category && !state.categories.find((c) => c.name === form.category)) {
-        dispatch({ type: 'ADD_CATEGORY', payload: { id: generateUUID(), name: form.category } });
-      }
     }
+
+    // A transaction's nonblank payee and category always belong to their
+    // respective master lists, whether this was an add or an edit.
+    const addToMasterList = (name, items, actionType) => {
+      const trimmed = name.trim();
+      if (trimmed && !items.some((item) => item.name.trim().toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
+        dispatch({ type: actionType, payload: { id: generateUUID(), name: trimmed } });
+      }
+    };
+    addToMasterList(data.payee, state.payees, 'ADD_PAYEE');
+    addToMasterList(data.category, state.categories, 'ADD_CATEGORY');
     onClose();
   };
 

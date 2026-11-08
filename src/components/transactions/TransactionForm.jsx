@@ -148,6 +148,10 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
           ...transaction,
           ...data,
           accountId: form.accountId || transaction.accountId,
+          ...(isReconciled && {
+            payment: transaction.payment || '',
+            deposit: transaction.deposit || '',
+          }),
           ...(accountChanged && { reconciliationId: '', cleared: 'FALSE' }),
         },
       });
@@ -259,13 +263,15 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
         <TextField
           margin="dense" label="Payment (money out)" fullWidth
           value={form.payment} onChange={handleChange('payment')}
-          error={!!errors.payment} helperText={errors.payment}
+          disabled={isReconciled}
+          error={!!errors.payment} helperText={errors.payment || (isReconciled ? 'Amount is locked because this transaction is reconciled.' : '')}
           slotProps={{ input: { inputProps: { min: 0, step: '0.01' } } }}
         />
         <TextField
           margin="dense" label="Deposit (money in)" fullWidth
           value={form.deposit} onChange={handleChange('deposit')}
-          error={!!errors.deposit} helperText={errors.deposit}
+          disabled={isReconciled}
+          error={!!errors.deposit} helperText={errors.deposit || (isReconciled ? 'Amount is locked because this transaction is reconciled.' : '')}
           slotProps={{ input: { inputProps: { min: 0, step: '0.01' } } }}
         />
         <Autocomplete

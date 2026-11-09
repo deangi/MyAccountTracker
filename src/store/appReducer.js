@@ -148,6 +148,13 @@ export function reduceAppState(state, action, initialState, SHEET_TABS, V2_LEDGE
       return { ...state, meta: { ...state.meta, ...action.payload } };
     case 'SET_SAVE_STATUS':
       return { ...state, saveStatus: action.payload };
+    case 'SET_V2_LEDGER':
+      return {
+        ...state,
+        chartOfAccounts: action.payload.chart_of_accounts || [],
+        journalEntries: action.payload.journal_entries || [],
+        postings: action.payload.postings || [],
+      };
 
     default:
       return state;

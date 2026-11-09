@@ -1,7 +1,7 @@
 import { ensureTransactionNamesInMasterList, reduceAppState } from './appReducer';
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
-import { readAllTabs, writeAllTabs, createSpreadsheet } from '../services/googleSheets';
-import { migrateV1ToV2, synchronizeAndValidateV2Ledger } from '../services/formatMigration';
+import { buildV2LedgerData, readAllTabs, writeAllTabs, createSpreadsheet } from '../services/googleSheets';
+import { migrateV1ToV2, validateV1Data, validateV2Ledger } from '../services/formatMigration';
 import { initAutoSave, markDirty, markClean, getAutoSaveStatus, onStatusChange } from '../services/autoSave';
 import { generateUUID } from '../utils/uuid';
 import { recoverTransactionsFromLedger } from '../utils/ledgerRecovery';
@@ -31,6 +31,21 @@ const initialState = {
 
 function reducer(state, action) {
   return reduceAppState(state, action, initialState, SHEET_TABS, V2_LEDGER_TABS);
+}
+
+function compareLedgerRecords(before = [], after = [], fields) {
+  const previous = new Map(before.map((record) => [record.id, record]));
+  const current = new Map(after.map((record) => [record.id, record]));
+  let added = 0;
+  let removed = 0;
+  let updated = 0;
+  for (const [id, record] of current) {
+    const prior = previous.get(id);
+    if (!prior) added += 1;
+    else if (fields.some((field) => String(prior[field] ?? '') !== String(record[field] ?? ''))) updated += 1;
+  }
+  for (const id of previous.keys()) if (!current.has(id)) removed += 1;
+  return { added, removed, updated };
 }
 
 export function AppProvider({ children }) {
@@ -203,16 +218,32 @@ export function AppProvider({ children }) {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
     try {
-      const result = await synchronizeAndValidateV2Ledger(s.spreadsheetId);
-      await load(s.spreadsheetId);
-      return result.report;
+      // Validation works from current in-memory registers. Corrections are
+      // staged locally and become durable only through the normal Save path.
+      const appData = getAppData();
+      const sourceValidation = validateV1Data(appData);
+      if (sourceValidation.errors.length) throw new Error(`Ledger validation failed:\n${sourceValidation.errors.join('\n')}`);
+      const ledger = buildV2LedgerData(appData);
+      const validation = validateV2Ledger({ ...appData, ...ledger });
+      if (validation.errors.length) throw new Error(`Ledger validation failed:\n${validation.errors.join('\n')}`);
+      const report = {
+        transactionCount: appData.transactions.length,
+        journalEntryCount: ledger.journal_entries.length,
+        postingCount: ledger.postings.length,
+        journalEntries: compareLedgerRecords(s.journalEntries, ledger.journal_entries, ['date', 'description', 'sourceTransactionIds', 'createdAt']),
+        postings: compareLedgerRecords(s.postings, ledger.postings, ['journalEntryId', 'accountId', 'debit', 'credit', 'payee', 'category', 'sourceTransactionId', 'reconciliationId']),
+      };
+      dispatch({ type: 'SET_V2_LEDGER', payload: ledger });
+      if (report.journalEntries.added + report.journalEntries.removed + report.journalEntries.updated
+        + report.postings.added + report.postings.removed + report.postings.updated > 0) markDirty();
+      return report;
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err.message });
       throw err;
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [load]);
+  }, [getAppData]);
 
   // Wrap dispatch to mark dirty on data changes
   const dispatchWithDirty = useCallback((action) => {

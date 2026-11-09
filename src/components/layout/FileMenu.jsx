@@ -233,7 +233,7 @@ export default function FileMenu({ anchorEl, open, onClose }) {
             <>
               {correctionCount(validationResult.report) > 0 ? (
                 <Alert severity="info" sx={{ mb: 2 }}>
-                  Corrections were applied to rebuild the ledger from the account registers.
+                  Corrections were staged from the account registers. Save the file to persist them to Google Sheets.
                 </Alert>
               ) : (
                 <Alert severity="success" sx={{ mb: 2 }}>All ledger checks passed. No corrections were needed.</Alert>
@@ -247,7 +247,11 @@ export default function FileMenu({ anchorEl, open, onClose }) {
                 )}
                 <p>Validated {validationResult.report.transactionCount} register transactions, {validationResult.report.journalEntryCount} journal entries, and {validationResult.report.postingCount} postings. Every journal entry is balanced.</p>
               </Typography>
-              <Alert severity="success" sx={{ mt: 2 }}>The validated sheet was saved to Google Sheets.</Alert>
+              <Alert severity={correctionCount(validationResult.report) > 0 ? 'warning' : 'success'} sx={{ mt: 2 }}>
+                {correctionCount(validationResult.report) > 0
+                  ? 'The file has unsaved validation corrections. Select Save to persist them to Google Sheets.'
+                  : 'Validation did not make any changes.'}
+              </Alert>
             </>
           )}
         </DialogContent>

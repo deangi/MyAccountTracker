@@ -168,9 +168,16 @@ export async function readAllTabs(spreadsheetId) {
   const txnTabNames = sheetProps
     .map((s) => s.title)
     .filter((t) => t.startsWith(TXN_TAB_PREFIX));
+  // Before per-account txn_* tabs were introduced, account files stored every
+  // transaction on one fixed transactions tab. Read that legacy tab only when
+  // no current register tabs exist, avoiding duplicate rows in mixed files.
+  const legacyTransactionTab = txnTabNames.length === 0
+    && sheetProps.some((sheet) => sheet.title === 'transactions')
+    ? 'transactions'
+    : null;
 
   const fixedTabs = getSheetTabsForVersion(formatVersion);
-  const allTabs = [...fixedTabs, ...txnTabNames];
+  const allTabs = [...fixedTabs, ...txnTabNames, ...(legacyTransactionTab ? [legacyTransactionTab] : [])];
 
   const ranges = allTabs.map((tab) => `'${tab}'!A:Z`);
   const rangeParams = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join('&');
@@ -185,7 +192,7 @@ export async function readAllTabs(spreadsheetId) {
     const tabName = vr.range.split('!')[0].replace(/'/g, '');
     const rows = vr.values || [];
 
-    if (tabName.startsWith(TXN_TAB_PREFIX)) {
+    if (tabName.startsWith(TXN_TAB_PREFIX) || tabName === legacyTransactionTab) {
       allTransactions.push(...parseRows(rows));
     } else {
       result[tabName] = parseRows(rows);

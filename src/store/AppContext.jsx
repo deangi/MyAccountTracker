@@ -4,6 +4,7 @@ import { readAllTabs, writeAllTabs, createSpreadsheet } from '../services/google
 import { migrateV1ToV2, synchronizeAndValidateV2Ledger } from '../services/formatMigration';
 import { initAutoSave, markDirty, markClean, getAutoSaveStatus, onStatusChange } from '../services/autoSave';
 import { generateUUID } from '../utils/uuid';
+import { recoverTransactionsFromLedger } from '../utils/ledgerRecovery';
 import { CURRENT_SHEET_FORMAT_VERSION, SHEET_TABS, V2_LEDGER_TABS, APP_TITLE } from '../config';
 
 const AppContext = createContext(null);
@@ -89,11 +90,26 @@ export function AppProvider({ children }) {
     dispatch({ type: 'SET_ERROR', payload: null });
     try {
       const data = await readAllTabs(sheetId);
-      const transactions = data.transactions || [];
+      let transactions = data.transactions || [];
+      const canRecoverRegisters = transactions.length === 0
+        && data[SHEET_TABS.META]?.[0]?.version === CURRENT_SHEET_FORMAT_VERSION
+        && (data[V2_LEDGER_TABS.JOURNAL_ENTRIES] || []).length > 0
+        && (data[V2_LEDGER_TABS.POSTINGS] || []).length > 0;
+      let recoveredRegisters = false;
+      if (canRecoverRegisters) {
+        transactions = recoverTransactionsFromLedger({
+          accounts: data[SHEET_TABS.ACCOUNTS] || [],
+          journalEntries: data[V2_LEDGER_TABS.JOURNAL_ENTRIES] || [],
+          postings: data[V2_LEDGER_TABS.POSTINGS] || [],
+        });
+        data.transactions = transactions;
+        recoveredRegisters = transactions.length > 0;
+      }
       const repairedPayees = ensureTransactionNamesInMasterList(data[SHEET_TABS.PAYEES] || [], transactions, 'payee', 'recovered-payee');
       const repairedCategories = ensureTransactionNamesInMasterList(data[SHEET_TABS.CATEGORIES] || [], transactions, 'category', 'recovered-category');
       const repaired = repairedPayees.length !== (data[SHEET_TABS.PAYEES] || []).length
-        || repairedCategories.length !== (data[SHEET_TABS.CATEGORIES] || []).length;
+        || repairedCategories.length !== (data[SHEET_TABS.CATEGORIES] || []).length
+        || recoveredRegisters;
       if (repaired) {
         data[SHEET_TABS.PAYEES] = repairedPayees;
         data[SHEET_TABS.CATEGORIES] = repairedCategories;

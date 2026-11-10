@@ -5,6 +5,7 @@ import { migrateV1ToV2, validateV1Data, validateV2Ledger } from '../services/for
 import { initAutoSave, markDirty, markClean, getAutoSaveStatus, onStatusChange } from '../services/autoSave';
 import { generateUUID } from '../utils/uuid';
 import { recoverTransactionsFromLedger } from '../utils/ledgerRecovery';
+import { prepareBackupRestore } from '../utils/backupRestore';
 import { CURRENT_SHEET_FORMAT_VERSION, SHEET_TABS, V2_LEDGER_TABS, APP_TITLE } from '../config';
 
 const AppContext = createContext(null);
@@ -245,6 +246,18 @@ export function AppProvider({ children }) {
     }
   }, [getAppData]);
 
+  const restoreBackup = useCallback((backup) => {
+    const s = stateRef.current;
+    if (!s.spreadsheetId) throw new Error('Open the Google Sheet you want to restore before selecting a backup.');
+    const restored = prepareBackupRestore(backup, s.meta);
+    dispatch({ type: 'LOAD_DATA', payload: restored.data });
+    dispatch({ type: 'SET_SPREADSHEET', payload: { id: s.spreadsheetId, title: s.spreadsheetTitle } });
+    // Deliberately stage only. The user must inspect the restored data and
+    // choose Save before writeAllTabs changes the selected Google Sheet.
+    markDirty();
+    return restored;
+  }, []);
+
   // Wrap dispatch to mark dirty on data changes
   const dispatchWithDirty = useCallback((action) => {
     dispatch(action);
@@ -282,6 +295,7 @@ export function AppProvider({ children }) {
     saveAs,
     migrateToV2,
     rebuildV2Ledger,
+    restoreBackup,
     generateUUID,
   };
 

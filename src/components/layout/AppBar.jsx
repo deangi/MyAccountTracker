@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   AppBar as MuiAppBar, Toolbar, Typography, IconButton, Box, Chip,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, Alert,
 } from '@mui/material';
 import { Menu as MenuIcon, InsertDriveFile } from '@mui/icons-material';
 import LoginButton from '../auth/LoginButton';
@@ -12,6 +13,8 @@ import { getTokenAcquiredAt } from '../../services/googleAuth';
 export default function AppBarComponent({ onMenuClick }) {
   const { state, save } = useApp();
   const [fileMenuAnchor, setFileMenuAnchor] = useState(null);
+  const [expiryPromptOpen, setExpiryPromptOpen] = useState(false);
+  const [promptedTokenAt, setPromptedTokenAt] = useState(null);
 
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -23,6 +26,24 @@ export default function AppBarComponent({ onMenuClick }) {
   const tokenAge = now - (getTokenAcquiredAt() ?? now);
   const dirtyAge = dirtySince ? now - dirtySince : 0;
   const isUrgent = hasUnsavedChanges && (tokenAge > TOKEN_EXPIRY_WARNING_MS || dirtyAge > DIRTY_WARNING_MS);
+
+  useEffect(() => {
+    const tokenAcquiredAt = getTokenAcquiredAt();
+    if (!hasUnsavedChanges) {
+      setExpiryPromptOpen(false);
+      setPromptedTokenAt(null);
+      return;
+    }
+    if (tokenAcquiredAt && now - tokenAcquiredAt >= TOKEN_EXPIRY_WARNING_MS && promptedTokenAt !== tokenAcquiredAt) {
+      setPromptedTokenAt(tokenAcquiredAt);
+      setExpiryPromptOpen(true);
+    }
+  }, [hasUnsavedChanges, now, promptedTokenAt]);
+
+  const handleExpirySave = async () => {
+    await save();
+    setExpiryPromptOpen(false);
+  };
 
   const statusText = hasUnsavedChanges
     ? 'Unsaved changes'
@@ -78,17 +99,27 @@ export default function AppBarComponent({ onMenuClick }) {
             sx={{
               mr: 2, color: 'inherit', borderColor: 'rgba(255,255,255,0.5)',
               ...(hasUnsavedChanges && { cursor: 'pointer' }),
-              '@keyframes blink': {
-                '0%, 100%': { opacity: 1 },
-                '50%': { opacity: 0.25 },
-              },
-              ...(isUrgent && { animation: 'blink 1.2s ease-in-out infinite' }),
             }}
           />
         )}
 
         <LoginButton />
       </Toolbar>
+      <Dialog open={expiryPromptOpen} onClose={() => setExpiryPromptOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Save Before Google Sign-In Expires</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Google access is about to expire and this file has unsaved changes.
+          </Alert>
+          <Typography variant="body2">
+            Save now while access is available. If saving cannot complete, MyAccountTracker will download a JSON recovery backup.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExpiryPromptOpen(false)}>Keep Working</Button>
+          <Button onClick={handleExpirySave} variant="contained" color="warning" disabled={state.loading}>Save Now</Button>
+        </DialogActions>
+      </Dialog>
     </MuiAppBar>
   );
 }

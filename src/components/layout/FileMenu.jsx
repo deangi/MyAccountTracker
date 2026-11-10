@@ -4,12 +4,12 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Alert, Typography,
 } from '@mui/material';
-import { NoteAdd, FolderOpen, Save, SaveAs, Upgrade, Sync } from '@mui/icons-material';
+import { NoteAdd, FolderOpen, Save, SaveAs, Upgrade, Sync, Restore } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import { openPicker } from '../../services/googleSheets';
 
 export default function FileMenu({ anchorEl, open, onClose }) {
-  const { state, save, load, createNew, saveAs, migrateToV2, rebuildV2Ledger } = useApp();
+  const { state, save, load, createNew, saveAs, migrateToV2, rebuildV2Ledger, restoreBackup } = useApp();
   const [newDialog, setNewDialog] = useState(false);
   const [saveAsDialog, setSaveAsDialog] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
@@ -19,6 +19,8 @@ export default function FileMenu({ anchorEl, open, onClose }) {
   const [migrationDialog, setMigrationDialog] = useState(false);
   const [conversionResult, setConversionResult] = useState(null);
   const [validationResult, setValidationResult] = useState(null);
+  const [restoreCandidate, setRestoreCandidate] = useState(null);
+  const [restoreResult, setRestoreResult] = useState(null);
 
   const handleNew = () => {
     onClose();
@@ -96,6 +98,39 @@ export default function FileMenu({ anchorEl, open, onClose }) {
     }
   };
 
+  const handleRestore = () => {
+    onClose();
+    if (!state.spreadsheetId) {
+      setRestoreResult({ error: 'Open the Google Sheet you want to restore before selecting a backup.' });
+      return;
+    }
+    document.getElementById('restore-json-backup-input')?.click();
+  };
+
+  const handleRestoreFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      const meta = Array.isArray(backup._meta) ? backup._meta[0] : null;
+      setRestoreCandidate({ backup, name: file.name, title: meta?.title || '(untitled backup)', version: meta?.version || '1' });
+    } catch (err) {
+      setRestoreResult({ error: `Could not read the JSON backup: ${err.message}` });
+    }
+  };
+
+  const handleRestoreConfirm = () => {
+    try {
+      const result = restoreBackup(restoreCandidate.backup);
+      setRestoreCandidate(null);
+      setRestoreResult({ result });
+    } catch (err) {
+      setRestoreCandidate(null);
+      setRestoreResult({ error: err.message || 'The JSON backup could not be restored.' });
+    }
+  };
+
   const correctionCount = (report) => (
     report.journalEntries.added + report.journalEntries.removed + report.journalEntries.updated
     + report.postings.added + report.postings.removed + report.postings.updated
@@ -104,6 +139,7 @@ export default function FileMenu({ anchorEl, open, onClose }) {
   return (
     <>
       <Menu anchorEl={anchorEl} open={open} onClose={onClose}>
+        <input id="restore-json-backup-input" type="file" accept=".json,application/json" hidden onChange={handleRestoreFile} />
         <MenuItem onClick={handleNew} disabled={!state.isAuthenticated}>
           <ListItemIcon><NoteAdd /></ListItemIcon>
           <ListItemText>New</ListItemText>
@@ -119,6 +155,10 @@ export default function FileMenu({ anchorEl, open, onClose }) {
         <MenuItem onClick={handleSaveAs} disabled={!state.isAuthenticated}>
           <ListItemIcon><SaveAs /></ListItemIcon>
           <ListItemText>Save As</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleRestore} disabled={!state.isAuthenticated}>
+          <ListItemIcon><Restore /></ListItemIcon>
+          <ListItemText>Restore JSON Backup</ListItemText>
         </MenuItem>
         {state.meta.version === '1' && (
           <MenuItem onClick={() => { onClose(); setMigrationDialog(true); }} disabled={!state.isAuthenticated}>
@@ -256,6 +296,43 @@ export default function FileMenu({ anchorEl, open, onClose }) {
           )}
         </DialogContent>
         <DialogActions><Button onClick={() => setValidationResult(null)} variant="contained">Close</Button></DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(restoreCandidate)} onClose={() => setRestoreCandidate(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Restore JSON Backup</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            This will replace the data currently shown for &quot;{state.spreadsheetTitle || state.meta.title}&quot; in this browser session. It will not write to Google Sheets until you select Save.
+          </Alert>
+          <Typography variant="body2">
+            Backup: {restoreCandidate?.name}<br />
+            Backup file title: {restoreCandidate?.title}<br />
+            Backup format: {restoreCandidate?.version}; open file format: {state.meta.version}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRestoreCandidate(null)}>Cancel</Button>
+          <Button onClick={handleRestoreConfirm} variant="contained" color="warning">Restore and Stage Changes</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(restoreResult)} onClose={() => setRestoreResult(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>JSON Backup Restore</DialogTitle>
+        <DialogContent>
+          {restoreResult?.error ? (
+            <Alert severity="error" sx={{ whiteSpace: 'pre-wrap' }}>{restoreResult.error}</Alert>
+          ) : restoreResult?.result && (
+            <>
+              <Alert severity="success" sx={{ mb: 2 }}>The backup was validated and staged. It has not yet been written to Google Sheets.</Alert>
+              <Typography variant="body2">
+                Restored {restoreResult.result.counts.accounts} accounts, {restoreResult.result.counts.transactions} transactions, {restoreResult.result.counts.payees} payees, {restoreResult.result.counts.categories} categories, and {restoreResult.result.counts.reconciliations} reconciliation records.
+              </Typography>
+              {restoreResult.result.warnings.length > 0 && <Alert severity="warning" sx={{ mt: 2 }}>{restoreResult.result.warnings.join(' ')}</Alert>}
+              <Alert severity="info" sx={{ mt: 2 }}>Review the data, then select Save to persist the restored data and rebuild the Format 2 ledger tabs.</Alert>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setRestoreResult(null)} variant="contained">Close</Button></DialogActions>
       </Dialog>
     </>
   );

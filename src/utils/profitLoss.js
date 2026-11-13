@@ -4,7 +4,10 @@ export function sortProfitLossItems(items = []) {
 }
 
 function categoryName(name = '') {
-  return String(name).replace(/^(income|expense):\s*/i, '').trim();
+  const category = String(name).replace(/^(income|expense):\s*/i, '').trim();
+  // Conversion Review is an internal V2 ledger placeholder. Reports should
+  // use the plain-language accounting label without changing source data.
+  return category.toLocaleLowerCase() === 'conversion review' ? 'Uncategorized' : category;
 }
 
 function roundMoney(value) {

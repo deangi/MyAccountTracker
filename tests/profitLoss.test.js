@@ -22,6 +22,7 @@ test('profit and loss nets matching categories and retains zero values in expens
       { name: 'Income: Consulting', amount: 200 },
       { name: 'Income: Rebate', amount: 30 },
       { name: 'Income: Zeroed', amount: 50 },
+      { name: 'Income: Conversion Review', amount: 10 },
     ],
     [
       { name: 'Expense: Consulting', amount: 75 },
@@ -32,6 +33,7 @@ test('profit and loss nets matching categories and retains zero values in expens
   assert.deepEqual(result.income, [
     { name: 'Consulting', amount: 125 },
     { name: 'Rebate', amount: 30 },
+    { name: 'Uncategorized', amount: 10 },
   ]);
   assert.deepEqual(result.expenses, [
     { name: 'Office', amount: 20 },
@@ -39,6 +41,6 @@ test('profit and loss nets matching categories and retains zero values in expens
   ]);
   assert.equal(
     result.income.reduce((sum, item) => sum + item.amount, 0) - result.expenses.reduce((sum, item) => sum + item.amount, 0),
-    135,
+    145,
   );
 });

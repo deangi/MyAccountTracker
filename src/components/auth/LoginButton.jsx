@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button, Dialog, DialogTitle, DialogContent, DialogActions,
   Typography, CircularProgress, Alert,
@@ -13,6 +13,17 @@ export default function LoginButton() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  // A sign-out confirmation should never remain on screen indefinitely. It
+  // simply cancels after one minute; it does not sign out or discard changes.
+  useEffect(() => {
+    if (!dialogOpen || saving) return undefined;
+    const timeout = setTimeout(() => {
+      setDialogOpen(false);
+      setSaveError('');
+    }, 60_000);
+    return () => clearTimeout(timeout);
+  }, [dialogOpen, saving]);
 
   const handleSignOutClick = () => {
     if (getAutoSaveStatus().hasUnsavedChanges) {
@@ -58,7 +69,7 @@ export default function LoginButton() {
           <DialogContent>
             {saveError
               ? <Alert severity="error" sx={{ mt: 1 }}>{saveError}</Alert>
-              : <Typography>You have unsaved changes. Save before signing out?</Typography>
+              : <Typography>You have unsaved changes. Save before signing out? This prompt will close in one minute.</Typography>
             }
             {saving && (
               <Typography sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>

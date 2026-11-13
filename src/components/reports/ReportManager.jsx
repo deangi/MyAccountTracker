@@ -8,7 +8,7 @@ import { useApp } from '../../store/AppContext';
 import { buildV2LedgerData, createMultiSheetReportSpreadsheet, createReportSpreadsheet } from '../../services/googleSheets';
 import { formatCurrency, toISODate } from '../../utils/formatters';
 import { buildNetWorthStatement, netWorthStatementRows } from '../../utils/netWorth';
-import { sortProfitLossItems } from '../../utils/profitLoss';
+import { netProfitLossCategories } from '../../utils/profitLoss';
 
 const allValues = (items, key) => [...new Set(items.map((item) => item[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const money = (value) => Math.round(Number(value || 0) * 100) / 100;
@@ -162,8 +162,7 @@ export default function ReportManager() {
           .filter((account) => account.accountClass === accountClass)
           .map((account) => ({ name: account.name, amount: money((account.normalBalance === 'credit' ? -1 : 1) * (balances.get(account.id) || 0)) }))
           .filter((item) => item.amount !== 0);
-        const income = sortProfitLossItems(byClass('income'));
-        const expenses = sortProfitLossItems(byClass('expense'));
+        const { income, expenses } = netProfitLossCategories(byClass('income'), byClass('expense'));
         const total = (items) => money(items.reduce((sum, item) => sum + item.amount, 0));
         rows = [
           ...reportHeader('Profit and Loss', sourceFileName, runAt, ['Period', `${incomeFromDate || 'All dates'} through ${incomeToDate || 'Current'}`]),

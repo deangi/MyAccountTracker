@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { netProfitLossCategories, sortProfitLossItems } from '../src/utils/profitLoss.js';
+import { netProfitLossCategories, sortProfitLossItems, transactionsForProfitLoss } from '../src/utils/profitLoss.js';
 
 test('profit and loss line items sort alphabetically without changing amounts', () => {
   const items = [
@@ -14,6 +14,23 @@ test('profit and loss line items sort alphabetically without changing amounts', 
     { name: 'Utilities', amount: 31 },
   ]);
   assert.deepEqual(items.map((item) => item.name), ['Utilities', 'advertising', 'Meals']);
+});
+
+test('profit and loss includes only checking, savings, and credit card activity, not linked transfers', () => {
+  const accounts = [
+    { id: 'checking', type: 'checking' }, { id: 'savings', type: 'savings' }, { id: 'card', type: 'credit card' },
+    { id: 'retirement', type: 'retirement' }, { id: 'property', type: 'property' }, { id: 'vehicle', type: 'vehicle' },
+    { id: 'asset', type: 'other asset' }, { id: 'equity', type: 'equity' }, { id: 'liability', type: 'other liability' },
+  ];
+  const transactions = [
+    { id: 'checking-income', accountId: 'checking' }, { id: 'savings-income', accountId: 'savings' }, { id: 'card-expense', accountId: 'card' },
+    { id: 'checking-transfer', accountId: 'checking', transferId: 'transfer-1' }, { id: 'card-transfer', accountId: 'card', transferId: 'transfer-1' },
+    { id: 'retirement-income', accountId: 'retirement' }, { id: 'property-income', accountId: 'property' }, { id: 'vehicle-income', accountId: 'vehicle' },
+    { id: 'asset-income', accountId: 'asset' }, { id: 'equity-income', accountId: 'equity' }, { id: 'liability-income', accountId: 'liability' },
+  ];
+  assert.deepEqual(transactionsForProfitLoss(accounts, transactions).map((transaction) => transaction.id), [
+    'checking-income', 'savings-income', 'card-expense',
+  ]);
 });
 
 test('profit and loss nets matching categories and retains zero values in expenses', () => {

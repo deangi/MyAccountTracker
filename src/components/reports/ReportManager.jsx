@@ -8,7 +8,7 @@ import { useApp } from '../../store/AppContext';
 import { buildV2LedgerData, createMultiSheetReportSpreadsheet, createReportSpreadsheet } from '../../services/googleSheets';
 import { formatCurrency, toISODate } from '../../utils/formatters';
 import { buildNetWorthStatement, netWorthStatementRows } from '../../utils/netWorth';
-import { netProfitLossCategories } from '../../utils/profitLoss';
+import { netProfitLossCategories, transactionsForProfitLoss } from '../../utils/profitLoss';
 
 const allValues = (items, key) => [...new Set(items.map((item) => item[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const money = (value) => Math.round(Number(value || 0) * 100) / 100;
@@ -121,7 +121,10 @@ export default function ReportManager() {
       const runAt = new Date();
       // Reports must include committed changes that have not yet been reloaded
       // from Google Sheets, so derive the V2 ledger from the live register state.
-      const ledger = buildV2LedgerData({ accounts: state.accounts, transactions: state.transactions });
+      const reportTransactions = kind === 'profit-loss'
+        ? transactionsForProfitLoss(state.accounts, state.transactions)
+        : state.transactions;
+      const ledger = buildV2LedgerData({ accounts: state.accounts, transactions: reportTransactions });
       const chartOfAccounts = ledger.chart_of_accounts;
       const entryDates = new Map(ledger.journal_entries.map((entry) => [entry.id, entry.date]));
       const balances = new Map(chartOfAccounts.map((account) => [account.id, 0]));

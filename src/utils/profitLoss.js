@@ -3,6 +3,19 @@ export function sortProfitLossItems(items = []) {
   return [...items].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
 }
 
+const PROFIT_LOSS_ACCOUNT_TYPES = new Set(['checking', 'savings', 'credit card']);
+
+// A P&L covers operating cash and card activity. Transfers are balance-sheet
+// movements, so omit every linked transfer even when one side is eligible.
+export function transactionsForProfitLoss(accounts = [], transactions = []) {
+  const eligibleAccountIds = new Set(accounts
+    .filter((account) => PROFIT_LOSS_ACCOUNT_TYPES.has(String(account.type || '').trim().toLowerCase()))
+    .map((account) => account.id));
+  return transactions.filter((transaction) => (
+    eligibleAccountIds.has(transaction.accountId) && !transaction.transferId
+  ));
+}
+
 function categoryName(name = '') {
   const category = String(name).replace(/^(income|expense):\s*/i, '').trim();
   // Conversion Review is an internal V2 ledger placeholder. Reports should

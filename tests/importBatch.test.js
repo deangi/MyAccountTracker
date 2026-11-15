@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { planImportRows } from '../src/services/importBatch.js';
+import { planImportRows, transactionRowForChange } from '../src/services/importBatch.js';
 
 const V3_TRANSACTION_HEADERS = ['id', 'accountId', 'checkNum', 'payment', 'deposit', 'deleted', 'rowVersion', 'lastOperationId'];
 const row = (id, operationId = '') => ({
@@ -31,4 +31,17 @@ test('retry stops if a previously written row changed', () => {
 
 test('import stops rather than overwrite an existing transaction', () => {
   assert.throws(() => planImportRows(sheet([row('a', 'other-operation')]), [change('a')], 'import-1', V3_TRANSACTION_HEADERS), /already exists/);
+});
+
+test('deleting a transaction retains details in a tombstone', () => {
+  const before = { ...row('a'), description: 'Disposable edit delete test', payment: '7.00' };
+  const operation = { id: 'delete-1', createdAt: '2026-11-15T20:00:00Z' };
+  const result = transactionRowForChange({ id: 'a', before, after: null }, { ...before, rowVersion: '2' }, operation);
+  assert.equal(result.id, 'a');
+  assert.equal(result.description, before.description);
+  assert.equal(result.payment, '7.00');
+  assert.equal(result.deleted, 'TRUE');
+  assert.equal(result.deletedAt, operation.createdAt);
+  assert.equal(result.deletedByOperationId, operation.id);
+  assert.equal(result.rowVersion, '3');
 });

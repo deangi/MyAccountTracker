@@ -1,6 +1,6 @@
 import { SHEET_TABS, TXN_TAB_PREFIX, V3_TRANSACTION_HEADERS, getSheetHeadersForVersion, sanitizeTabName } from '../config';
 import { getLocator, putLocator } from './syncOutbox';
-import { planImportRows } from './importBatch';
+import { planImportRows, transactionRowForChange } from './importBatch';
 
 const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 const headers = getSheetHeadersForVersion('3');
@@ -137,8 +137,7 @@ export async function applyChanges(workbookId, token, operation) {
     }
     let desired = change.after || {};
     if (change.tab === 'transactions') {
-      desired = desired ? { ...desired, deleted: 'FALSE', rowVersion: String(Number(existing?.data.rowVersion || 0) + 1), lastOperationId: operation.id } :
-        { ...change.before, deleted: 'TRUE', deletedAt: operation.createdAt, deletedByOperationId: operation.id, rowVersion: String(Number(existing?.data.rowVersion || 0) + 1), lastOperationId: operation.id };
+      desired = transactionRowForChange(change, existing?.data, operation);
     }
     if (existing?.data.lastOperationId === operation.id) continue;
     if (existing && sameRow(existing.data, desired, fields)) continue;

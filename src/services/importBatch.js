@@ -1,5 +1,18 @@
 const sameRow = (a, b, columns) => columns.every((field) => String(a?.[field] ?? '') === String(b?.[field] ?? ''));
 
+export function transactionRowForChange(change, existing, operation) {
+  const base = change.after || change.before;
+  if (!base) throw new Error(`Transaction ${change.id} has no row data; sync stopped`);
+  return {
+    ...base,
+    deleted: change.after ? 'FALSE' : 'TRUE',
+    deletedAt: change.after ? '' : operation.createdAt,
+    deletedByOperationId: change.after ? '' : operation.id,
+    rowVersion: String(Number(existing?.rowVersion || 0) + 1),
+    lastOperationId: operation.id,
+  };
+}
+
 // Plan all rows in one register from a single snapshot. A retry can safely
 // skip rows already written by this operation and append only the remainder.
 export function planImportRows(sheet, changes, operationId, fields) {

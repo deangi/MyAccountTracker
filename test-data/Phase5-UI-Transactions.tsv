@@ -1,0 +1,111 @@
+Date	Account	Check #	Payee	Memo	Payment	Deposit	Category	Cleared
+1/1/2026	UI Test Checking	EFT	UI Test Vendor	Checking test 1	10.00		Test Expense	false
+1/2/2026	UI Test Checking	DEP	UI Test Funding	Checking test 2		25.00	Test Income	false
+1/3/2026	UI Test Checking	EFT	UI Test Vendor	Checking test 3	10.00		Test Expense	false
+1/4/2026	UI Test Checking	DEP	UI Test Funding	Checking test 4		25.00	Test Income	false
+1/5/2026	UI Test Checking	EFT	UI Test Vendor	Checking test 5	10.00		Test Expense	false
+1/6/2026	UI Test Checking	DEP	UI Test Funding	Checking test 6		25.00	Test Income	false
+1/7/2026	UI Test Checking	EFT	UI Test Vendor	Checking test 7	10.00		Test Expense	false
+1/8/2026	UI Test Checking	DEP	UI Test Funding	Checking test 8		25.00	Test Income	false
+1/9/2026	UI Test Checking	EFT	UI Test Vendor	Checking test 9	10.00		Test Expense	false
+1/10/2026	UI Test Checking	DEP	UI Test Funding	Checking test 10		25.00	Test Income	false
+1/1/2026	UI Test Savings	EFT	UI Test Vendor	Savings test 1	10.00		Test Expense	false
+1/2/2026	UI Test Savings	DEP	UI Test Funding	Savings test 2		25.00	Test Income	false
+1/3/2026	UI Test Savings	EFT	UI Test Vendor	Savings test 3	10.00		Test Expense	false
+1/4/2026	UI Test Savings	DEP	UI Test Funding	Savings test 4		25.00	Test Income	false
+1/5/2026	UI Test Savings	EFT	UI Test Vendor	Savings test 5	10.00		Test Expense	false
+1/6/2026	UI Test Savings	DEP	UI Test Funding	Savings test 6		25.00	Test Income	false
+1/7/2026	UI Test Savings	EFT	UI Test Vendor	Savings test 7	10.00		Test Expense	false
+1/8/2026	UI Test Savings	DEP	UI Test Funding	Savings test 8		25.00	Test Income	false
+1/9/2026	UI Test Savings	EFT	UI Test Vendor	Savings test 9	10.00		Test Expense	false
+1/10/2026	UI Test Savings	DEP	UI Test Funding	Savings test 10		25.00	Test Income	false
+1/1/2026	UI Test Retirement	EFT	UI Test Vendor	Retirement test 1	10.00		Test Expense	false
+1/2/2026	UI Test Retirement	DEP	UI Test Funding	Retirement test 2		25.00	Test Income	false
+1/3/2026	UI Test Retirement	EFT	UI Test Vendor	Retirement test 3	10.00		Test Expense	false
+1/4/2026	UI Test Retirement	DEP	UI Test Funding	Retirement test 4		25.00	Test Income	false
+1/5/2026	UI Test Retirement	EFT	UI Test Vendor	Retirement test 5	10.00		Test Expense	false
+1/6/2026	UI Test Retirement	DEP	UI Test Funding	Retirement test 6		25.00	Test Income	false
+1/7/2026	UI Test Retirement	EFT	UI Test Vendor	Retirement test 7	10.00		Test Expense	false
+1/8/2026	UI Test Retirement	DEP	UI Test Funding	Retirement test 8		25.00	Test Income	false
+1/9/2026	UI Test Retirement	EFT	UI Test Vendor	Retirement test 9	10.00		Test Expense	false
+1/10/2026	UI Test Retirement	DEP	UI Test Funding	Retirement test 10		25.00	Test Income	false
+1/1/2026	UI Test Property	EFT	UI Test Vendor	Property test 1	10.00		Test Expense	false
+1/2/2026	UI Test Property	DEP	UI Test Funding	Property test 2		25.00	Test Income	false
+1/3/2026	UI Test Property	EFT	UI Test Vendor	Property test 3	10.00		Test Expense	false
+1/4/2026	UI Test Property	DEP	UI Test Funding	Property test 4		25.00	Test Income	false
+1/5/2026	UI Test Property	EFT	UI Test Vendor	Property test 5	10.00		Test Expense	false
+1/6/2026	UI Test Property	DEP	UI Test Funding	Property test 6		25.00	Test Income	false
+1/7/2026	UI Test Property	EFT	UI Test Vendor	Property test 7	10.00		Test Expense	false
+1/8/2026	UI Test Property	DEP	UI Test Funding	Property test 8		25.00	Test Income	false
+1/9/2026	UI Test Property	EFT	UI Test Vendor	Property test 9	10.00		Test Expense	false
+1/10/2026	UI Test Property	DEP	UI Test Funding	Property test 10		25.00	Test Income	false
+1/1/2026	UI Test Vehicle	EFT	UI Test Vendor	Vehicle test 1	10.00		Test Expense	false
+1/2/2026	UI Test Vehicle	DEP	UI Test Funding	Vehicle test 2		25.00	Test Income	false
+1/3/2026	UI Test Vehicle	EFT	UI Test Vendor	Vehicle test 3	10.00		Test Expense	false
+1/4/2026	UI Test Vehicle	DEP	UI Test Funding	Vehicle test 4		25.00	Test Income	false
+1/5/2026	UI Test Vehicle	EFT	UI Test Vendor	Vehicle test 5	10.00		Test Expense	false
+1/6/2026	UI Test Vehicle	DEP	UI Test Funding	Vehicle test 6		25.00	Test Income	false
+1/7/2026	UI Test Vehicle	EFT	UI Test Vendor	Vehicle test 7	10.00		Test Expense	false
+1/8/2026	UI Test Vehicle	DEP	UI Test Funding	Vehicle test 8		25.00	Test Income	false
+1/9/2026	UI Test Vehicle	EFT	UI Test Vendor	Vehicle test 9	10.00		Test Expense	false
+1/10/2026	UI Test Vehicle	DEP	UI Test Funding	Vehicle test 10		25.00	Test Income	false
+1/1/2026	UI Test Other asset	EFT	UI Test Vendor	Other asset test 1	10.00		Test Expense	false
+1/2/2026	UI Test Other asset	DEP	UI Test Funding	Other asset test 2		25.00	Test Income	false
+1/3/2026	UI Test Other asset	EFT	UI Test Vendor	Other asset test 3	10.00		Test Expense	false
+1/4/2026	UI Test Other asset	DEP	UI Test Funding	Other asset test 4		25.00	Test Income	false
+1/5/2026	UI Test Other asset	EFT	UI Test Vendor	Other asset test 5	10.00		Test Expense	false
+1/6/2026	UI Test Other asset	DEP	UI Test Funding	Other asset test 6		25.00	Test Income	false
+1/7/2026	UI Test Other asset	EFT	UI Test Vendor	Other asset test 7	10.00		Test Expense	false
+1/8/2026	UI Test Other asset	DEP	UI Test Funding	Other asset test 8		25.00	Test Income	false
+1/9/2026	UI Test Other asset	EFT	UI Test Vendor	Other asset test 9	10.00		Test Expense	false
+1/10/2026	UI Test Other asset	DEP	UI Test Funding	Other asset test 10		25.00	Test Income	false
+1/1/2026	UI Test Credit card	EFT	UI Test Vendor	Credit card test 1	10.00		Test Expense	false
+1/2/2026	UI Test Credit card	DEP	UI Test Funding	Credit card test 2		25.00	Test Income	false
+1/3/2026	UI Test Credit card	EFT	UI Test Vendor	Credit card test 3	10.00		Test Expense	false
+1/4/2026	UI Test Credit card	DEP	UI Test Funding	Credit card test 4		25.00	Test Income	false
+1/5/2026	UI Test Credit card	EFT	UI Test Vendor	Credit card test 5	10.00		Test Expense	false
+1/6/2026	UI Test Credit card	DEP	UI Test Funding	Credit card test 6		25.00	Test Income	false
+1/7/2026	UI Test Credit card	EFT	UI Test Vendor	Credit card test 7	10.00		Test Expense	false
+1/8/2026	UI Test Credit card	DEP	UI Test Funding	Credit card test 8		25.00	Test Income	false
+1/9/2026	UI Test Credit card	EFT	UI Test Vendor	Credit card test 9	10.00		Test Expense	false
+1/10/2026	UI Test Credit card	DEP	UI Test Funding	Credit card test 10		25.00	Test Income	false
+1/1/2026	UI Test Loan	EFT	UI Test Vendor	Loan test 1	10.00		Test Expense	false
+1/2/2026	UI Test Loan	DEP	UI Test Funding	Loan test 2		25.00	Test Income	false
+1/3/2026	UI Test Loan	EFT	UI Test Vendor	Loan test 3	10.00		Test Expense	false
+1/4/2026	UI Test Loan	DEP	UI Test Funding	Loan test 4		25.00	Test Income	false
+1/5/2026	UI Test Loan	EFT	UI Test Vendor	Loan test 5	10.00		Test Expense	false
+1/6/2026	UI Test Loan	DEP	UI Test Funding	Loan test 6		25.00	Test Income	false
+1/7/2026	UI Test Loan	EFT	UI Test Vendor	Loan test 7	10.00		Test Expense	false
+1/8/2026	UI Test Loan	DEP	UI Test Funding	Loan test 8		25.00	Test Income	false
+1/9/2026	UI Test Loan	EFT	UI Test Vendor	Loan test 9	10.00		Test Expense	false
+1/10/2026	UI Test Loan	DEP	UI Test Funding	Loan test 10		25.00	Test Income	false
+1/1/2026	UI Test Mortgage	EFT	UI Test Vendor	Mortgage test 1	10.00		Test Expense	false
+1/2/2026	UI Test Mortgage	DEP	UI Test Funding	Mortgage test 2		25.00	Test Income	false
+1/3/2026	UI Test Mortgage	EFT	UI Test Vendor	Mortgage test 3	10.00		Test Expense	false
+1/4/2026	UI Test Mortgage	DEP	UI Test Funding	Mortgage test 4		25.00	Test Income	false
+1/5/2026	UI Test Mortgage	EFT	UI Test Vendor	Mortgage test 5	10.00		Test Expense	false
+1/6/2026	UI Test Mortgage	DEP	UI Test Funding	Mortgage test 6		25.00	Test Income	false
+1/7/2026	UI Test Mortgage	EFT	UI Test Vendor	Mortgage test 7	10.00		Test Expense	false
+1/8/2026	UI Test Mortgage	DEP	UI Test Funding	Mortgage test 8		25.00	Test Income	false
+1/9/2026	UI Test Mortgage	EFT	UI Test Vendor	Mortgage test 9	10.00		Test Expense	false
+1/10/2026	UI Test Mortgage	DEP	UI Test Funding	Mortgage test 10		25.00	Test Income	false
+1/1/2026	UI Test Other liability	EFT	UI Test Vendor	Other liability test 1	10.00		Test Expense	false
+1/2/2026	UI Test Other liability	DEP	UI Test Funding	Other liability test 2		25.00	Test Income	false
+1/3/2026	UI Test Other liability	EFT	UI Test Vendor	Other liability test 3	10.00		Test Expense	false
+1/4/2026	UI Test Other liability	DEP	UI Test Funding	Other liability test 4		25.00	Test Income	false
+1/5/2026	UI Test Other liability	EFT	UI Test Vendor	Other liability test 5	10.00		Test Expense	false
+1/6/2026	UI Test Other liability	DEP	UI Test Funding	Other liability test 6		25.00	Test Income	false
+1/7/2026	UI Test Other liability	EFT	UI Test Vendor	Other liability test 7	10.00		Test Expense	false
+1/8/2026	UI Test Other liability	DEP	UI Test Funding	Other liability test 8		25.00	Test Income	false
+1/9/2026	UI Test Other liability	EFT	UI Test Vendor	Other liability test 9	10.00		Test Expense	false
+1/10/2026	UI Test Other liability	DEP	UI Test Funding	Other liability test 10		25.00	Test Income	false
+1/1/2026	UI Test Equity	EFT	UI Test Vendor	Equity test 1	10.00		Test Expense	false
+1/2/2026	UI Test Equity	DEP	UI Test Funding	Equity test 2		25.00	Test Income	false
+1/3/2026	UI Test Equity	EFT	UI Test Vendor	Equity test 3	10.00		Test Expense	false
+1/4/2026	UI Test Equity	DEP	UI Test Funding	Equity test 4		25.00	Test Income	false
+1/5/2026	UI Test Equity	EFT	UI Test Vendor	Equity test 5	10.00		Test Expense	false
+1/6/2026	UI Test Equity	DEP	UI Test Funding	Equity test 6		25.00	Test Income	false
+1/7/2026	UI Test Equity	EFT	UI Test Vendor	Equity test 7	10.00		Test Expense	false
+1/8/2026	UI Test Equity	DEP	UI Test Funding	Equity test 8		25.00	Test Income	false
+1/9/2026	UI Test Equity	EFT	UI Test Vendor	Equity test 9	10.00		Test Expense	false
+1/10/2026	UI Test Equity	DEP	UI Test Funding	Equity test 10		25.00	Test Income	false

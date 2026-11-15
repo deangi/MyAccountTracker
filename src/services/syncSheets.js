@@ -1,5 +1,6 @@
 import { SHEET_TABS, TXN_TAB_PREFIX, V3_TRANSACTION_HEADERS, getSheetHeadersForVersion, sanitizeTabName } from '../config';
 import { getLocator, putLocator } from './syncOutbox';
+import { planImportRows } from './importBatch';
 
 const BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 const headers = getSheetHeadersForVersion('3');
@@ -64,6 +65,43 @@ async function ensureAccountRegister(workbookId, token, account, accounts, prope
 export async function applyChanges(workbookId, token, operation) {
   const { changes, accounts } = operation.payload;
   const properties = await sheetProperties(workbookId, token);
+  if (operation.kind === 'IMPORT_TRANSACTIONS' && changes.every((change) => change.tab === 'transactions')) {
+    const groups = new Map();
+    for (const change of changes) {
+      const title = await resolveTab(workbookId, token, change, accounts, properties);
+      if (!groups.has(title)) groups.set(title, []);
+      groups.get(title).push(change);
+    }
+    const planned = [];
+    for (const [title, group] of groups) {
+      const sheet = await readRows(workbookId, token, title);
+      const plan = planImportRows(sheet, group, operation.id, V3_TRANSACTION_HEADERS);
+      planned.push({ title, ...plan });
+    }
+    const data = planned.flatMap(({ title, writes }) => writes.map(({ rowNumber, desired }) => ({
+      range: `${quote(title)}!A${rowNumber}:${column(V3_TRANSACTION_HEADERS.length)}${rowNumber}`,
+      values: [V3_TRANSACTION_HEADERS.map((field) => desired[field] ?? '')],
+    })));
+    if (data.length) {
+      await request(`${BASE}/${workbookId}/values:batchUpdate`, token, {
+        method: 'POST', body: JSON.stringify({ valueInputOption: 'RAW', data }),
+      });
+    }
+    for (const { title, writes, locators } of planned) {
+      if (writes.length) {
+        const verified = await readRows(workbookId, token, title);
+        for (const { id, rowNumber, desired } of writes) {
+          if (!sameRow(verified.rows.find((row) => row.number === rowNumber)?.data, desired, V3_TRANSACTION_HEADERS)) {
+            throw new Error(`Read-back mismatch for ${id} in ${title}`);
+          }
+        }
+      }
+      for (const locator of locators) {
+        await putLocator({ id: `${workbookId}:${locator.id}`, title, rowNumber: locator.rowNumber, rowVersion: locator.rowVersion });
+      }
+    }
+    return;
+  }
   for (const change of changes) {
     if (change.tab === SHEET_TABS.ACCOUNTS && change.after && !change.before) {
       await ensureAccountRegister(workbookId, token, change.after, accounts, properties);

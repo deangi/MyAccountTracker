@@ -49,6 +49,14 @@ export function markClean() {
   notifyListeners();
 }
 
+export function resetSaveStatus() {
+  hasUnsavedChanges = false;
+  dirtySince = null;
+  lastSaveTime = null;
+  resetTimer();
+  notifyListeners();
+}
+
 export function getAutoSaveStatus() {
   return {
     hasUnsavedChanges,

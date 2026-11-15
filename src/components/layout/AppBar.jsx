@@ -10,7 +10,7 @@ import { useApp } from '../../store/AppContext';
 import { APP_TITLE, APP_VERSION, APP_BUILD_DATE, TOKEN_EXPIRY_WARNING_MS, DIRTY_WARNING_MS } from '../../config';
 import { getTokenAcquiredAt } from '../../services/googleAuth';
 
-export default function AppBarComponent({ onMenuClick }) {
+export default function AppBarComponent({ onMenuClick, onWorkbookClosed }) {
   const { state, save } = useApp();
   const [fileMenuAnchor, setFileMenuAnchor] = useState(null);
   const [expiryPromptOpen, setExpiryPromptOpen] = useState(false);
@@ -81,6 +81,7 @@ export default function AppBarComponent({ onMenuClick }) {
               anchorEl={fileMenuAnchor}
               open={Boolean(fileMenuAnchor)}
               onClose={() => setFileMenuAnchor(null)}
+              onWorkbookClosed={onWorkbookClosed}
             />
           </>
         )}

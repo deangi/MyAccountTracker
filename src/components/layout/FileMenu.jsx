@@ -4,12 +4,12 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Alert, Typography,
 } from '@mui/material';
-import { NoteAdd, FolderOpen, Save, SaveAs, Upgrade, Sync, Restore } from '@mui/icons-material';
+import { NoteAdd, FolderOpen, Close as CloseIcon, Save, SaveAs, Upgrade, Sync, Restore } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import { openPicker } from '../../services/googleSheets';
 
-export default function FileMenu({ anchorEl, open, onClose }) {
-  const { state, save, load, createNew, saveAs, migrateToV3, rebuildV2Ledger, restoreBackup, repairFromBackup, retrySync, downloadSyncRecovery, downloadSyncAudit } = useApp();
+export default function FileMenu({ anchorEl, open, onClose, onWorkbookClosed }) {
+  const { state, save, load, close, createNew, saveAs, migrateToV3, rebuildV2Ledger, restoreBackup, repairFromBackup, retrySync, downloadSyncRecovery, downloadSyncAudit } = useApp();
   const [newDialog, setNewDialog] = useState(false);
   const [saveAsDialog, setSaveAsDialog] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
@@ -23,6 +23,7 @@ export default function FileMenu({ anchorEl, open, onClose }) {
   const [restoreResult, setRestoreResult] = useState(null);
   const [saveAsResult, setSaveAsResult] = useState(null);
   const [syncDialog, setSyncDialog] = useState(false);
+  const [closeError, setCloseError] = useState('');
 
   const handleNew = () => {
     onClose();
@@ -41,6 +42,16 @@ export default function FileMenu({ anchorEl, open, onClose }) {
     onClose();
     setSheetId('');
     setOpenDialog(true);
+  };
+
+  const handleClose = async () => {
+    onClose();
+    try {
+      await close();
+      onWorkbookClosed();
+    } catch (error) {
+      setCloseError(error.message || 'The workbook could not be closed.');
+    }
   };
 
   const handleOpenPicker = async () => {
@@ -159,46 +170,56 @@ export default function FileMenu({ anchorEl, open, onClose }) {
           <ListItemIcon><FolderOpen /></ListItemIcon>
           <ListItemText>Open</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleSave} disabled={!state.isAuthenticated || state.meta.version !== '1'}>
+        <MenuItem onClick={handleClose} disabled={!state.isAuthenticated || !state.spreadsheetId || state.loading}>
+          <ListItemIcon><CloseIcon /></ListItemIcon>
+          <ListItemText>Close</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleSave} disabled={!state.isAuthenticated || !state.spreadsheetId || state.meta.version !== '1'}>
           <ListItemIcon><Save /></ListItemIcon>
           <ListItemText>Save</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleSaveAs} disabled={!state.isAuthenticated || state.meta.version !== '3'}>
+        <MenuItem onClick={handleSaveAs} disabled={!state.isAuthenticated || !state.spreadsheetId || state.meta.version !== '3'}>
           <ListItemIcon><SaveAs /></ListItemIcon>
           <ListItemText>Save As</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleRestore} disabled={!state.isAuthenticated || state.meta.version === '2'}>
+        <MenuItem onClick={handleRestore} disabled={!state.isAuthenticated || !state.spreadsheetId || state.meta.version === '2'}>
           <ListItemIcon><Restore /></ListItemIcon>
           <ListItemText>{state.meta.version === '3' ? 'Repair from JSON Backup' : 'Restore JSON Backup'}</ListItemText>
         </MenuItem>
-        {state.meta.version === '3' && (
+        {state.spreadsheetId && state.meta.version === '3' && (
           <MenuItem onClick={() => { onClose(); setSyncDialog(true); }}>
             <ListItemText>Sync Status</ListItemText>
           </MenuItem>
         )}
-        {state.meta.version === '3' && (
+        {state.spreadsheetId && state.meta.version === '3' && (
           <MenuItem onClick={() => { onClose(); retrySync(); }}>
             <ListItemText>Retry Pending Sync ({state.syncStatus.pending})</ListItemText>
           </MenuItem>
         )}
-        {state.meta.version === '3' && (
+        {state.spreadsheetId && state.meta.version === '3' && (
           <MenuItem onClick={() => { onClose(); downloadSyncRecovery(); }}>
             <ListItemText>Download Sync Recovery Bundle</ListItemText>
           </MenuItem>
         )}
-        {['1', '2'].includes(state.meta.version) && (
+        {state.spreadsheetId && ['1', '2'].includes(state.meta.version) && (
           <MenuItem onClick={() => { onClose(); setMigrationDialog(true); }} disabled={!state.isAuthenticated}>
             <ListItemIcon><Upgrade /></ListItemIcon>
             <ListItemText>Convert to Format 3</ListItemText>
           </MenuItem>
         )}
-        {['2', '3'].includes(state.meta.version) && (
+        {state.spreadsheetId && ['2', '3'].includes(state.meta.version) && (
           <MenuItem onClick={handleRebuildLedger} disabled={!state.isAuthenticated}>
             <ListItemIcon><Sync /></ListItemIcon>
             <ListItemText>Validate Double-Entry Ledger</ListItemText>
           </MenuItem>
         )}
       </Menu>
+
+      <Dialog open={Boolean(closeError)} onClose={() => setCloseError('')} maxWidth="sm" fullWidth>
+        <DialogTitle>Could Not Close Workbook</DialogTitle>
+        <DialogContent><Alert severity="error">{closeError}</Alert></DialogContent>
+        <DialogActions><Button onClick={() => setCloseError('')}>OK</Button></DialogActions>
+      </Dialog>
 
       {/* New dialog */}
       <Dialog open={newDialog} onClose={() => setNewDialog(false)} maxWidth="sm" fullWidth>

@@ -4,7 +4,7 @@ import { buildV2LedgerData, copySpreadsheet, createSpreadsheet, getSpreadsheetTi
 import { assertWorkbookCopy } from '../utils/workbookCopy';
 import { overlayPendingOperations } from '../utils/pendingOverlay';
 import { assertExactCanonicalCopy, migrateToV3 as migrateSpreadsheetToV3, validateV1Data, validateV2Ledger } from '../services/formatMigration';
-import { initAutoSave, markDirty, markClean, getAutoSaveStatus, onStatusChange } from '../services/autoSave';
+import { initAutoSave, markDirty, markClean, resetSaveStatus, getAutoSaveStatus, onStatusChange } from '../services/autoSave';
 import { generateUUID } from '../utils/uuid';
 import { prepareBackupRestore } from '../utils/backupRestore';
 import { CURRENT_SHEET_FORMAT_VERSION, SHEET_TABS, V2_LEDGER_TABS, APP_TITLE } from '../config';
@@ -80,9 +80,11 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     if (!state.spreadsheetId || state.meta.version !== '3') return undefined;
+    const workbookId = state.spreadsheetId;
     const worker = new Worker(new URL('../services/syncWorker.js', import.meta.url), { type: 'module' });
     syncWorkerRef.current = worker;
     worker.onmessage = async ({ data }) => {
+      if (stateRef.current.spreadsheetId !== workbookId) return;
       if (data.type === 'status') {
         dispatch({ type: 'SET_SYNC_STATUS', payload: data });
         if (data.pending === 0 && !requiresFullSaveRef.current) markClean();
@@ -94,7 +96,7 @@ export function AppProvider({ children }) {
         else dispatch({ type: 'SET_ERROR', payload: 'Google sign-in is required to resume pending sheet updates.' });
       }
     };
-    worker.postMessage({ type: 'open', workbookId: state.spreadsheetId, token: getAccessToken() });
+    worker.postMessage({ type: 'open', workbookId, token: getAccessToken() });
     return () => { worker.terminate(); syncWorkerRef.current = null; };
   }, [state.spreadsheetId, state.meta.version]);
 
@@ -219,6 +221,35 @@ export function AppProvider({ children }) {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, []);
+
+  const close = useCallback(async () => {
+    if (fileOperationRef.current) throw new Error('Wait for the file operation to finish before closing.');
+    const s = stateRef.current;
+    if (!s.spreadsheetId) return;
+    if (s.meta.version === '1' && getAutoSaveStatus().hasUnsavedChanges) {
+      const saved = await save();
+      if (saved !== true) throw new Error('The workbook could not be saved. It remains open.');
+    }
+    fileOperationRef.current = true;
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      if (s.meta.version === '3') {
+        if (requiresFullSaveRef.current) throw new Error('Unsynced changes require repair before closing. Download a sync recovery bundle first.');
+        await waitForSyncIdle(s.spreadsheetId);
+      }
+      localStorage.removeItem('defaultSpreadsheetId');
+      projectedStateRef.current = null;
+      requiresFullSaveRef.current = false;
+      dispatch({ type: 'CLEAR_DATA' });
+      resetSaveStatus();
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+      dispatch({ type: 'SET_LOADING', payload: false });
+      throw error;
+    } finally {
+      fileOperationRef.current = false;
+    }
+  }, [save, waitForSyncIdle]);
 
   const createNew = useCallback(async (title, owner) => {
     dispatch({ type: 'SET_LOADING', payload: true });
@@ -460,6 +491,7 @@ export function AppProvider({ children }) {
     dispatch: dispatchWithDirty,
     save,
     load,
+    close,
     createNew,
     saveAs,
     migrateToV3,

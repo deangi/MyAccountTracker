@@ -60,6 +60,9 @@ export function reduceAppState(state, action, initialState, SHEET_TABS, V2_LEDGE
         selectedAccountId: null,
         spreadsheetId: null,
         spreadsheetTitle: '',
+        loading: false,
+        error: null,
+        syncStatus: initialState.syncStatus,
       };
     case 'SELECT_ACCOUNT':
       return { ...state, selectedAccountId: action.payload };

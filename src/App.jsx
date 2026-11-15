@@ -92,6 +92,15 @@ function AppContent() {
       );
     }
 
+    if (!state.spreadsheetId) {
+      return (
+        <Box sx={{ textAlign: 'center', py: 8 }}>
+          <Typography variant="h5" gutterBottom>No file open</Typography>
+          <Typography color="text.secondary">Choose New or Open from the File menu.</Typography>
+        </Box>
+      );
+    }
+
     switch (currentView) {
       case 'transactions':
         return <AccountDetail />;
@@ -113,7 +122,7 @@ function AppContent() {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <AppBarComponent onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+      <AppBarComponent onMenuClick={() => setSidebarOpen(!sidebarOpen)} onWorkbookClosed={() => setCurrentView('accounts')} />
       {state.isAuthenticated && (
         <Sidebar
           open={sidebarOpen}

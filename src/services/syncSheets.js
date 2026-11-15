@@ -10,7 +10,12 @@ const quote = (title) => `'${title.replace(/'/g, "''")}'`;
 async function request(url, token, options = {}) {
   const response = await fetch(url, { ...options, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
   if (response.status === 401) { const error = new Error('Google authentication expired'); error.auth = true; throw error; }
-  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error?.message || `Sheets API error ${response.status}`);
+  if (!response.ok) {
+    const message = (await response.json().catch(() => ({}))).error?.message || `Sheets API error ${response.status}`;
+    const error = new Error(message);
+    error.quota = response.status === 429 || (response.status === 403 && /quota exceeded|rate limit/i.test(message));
+    throw error;
+  }
   return response.json();
 }
 

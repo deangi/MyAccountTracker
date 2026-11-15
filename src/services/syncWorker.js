@@ -4,6 +4,14 @@ import { applyChanges } from './syncSheets';
 let workbookId = null;
 let token = null;
 let running = false;
+let retryAfter = 0;
+let retryTimer = null;
+
+function scheduleQuotaRetry() {
+  retryAfter = Date.now() + 65_000;
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => { retryAfter = 0; retryTimer = null; void run(); }, 65_000);
+}
 
 async function status() {
   const operations = (await listOperations()).filter((item) => item.workbookId === workbookId);
@@ -18,7 +26,7 @@ async function status() {
 }
 
 async function run() {
-  if (running || !workbookId) return;
+  if (running || !workbookId || Date.now() < retryAfter) return;
   running = true;
   try {
     for (const operation of (await listOperations())
@@ -42,6 +50,14 @@ async function run() {
         await putOperation(operation);
         await appendAudit({ ...operation, id: `${operation.id}:acknowledged` });
       } catch (error) {
+        if (error.quota) {
+          operation.status = 'queued';
+          operation.error = error.message;
+          await putOperation(operation);
+          await appendAudit({ ...operation, id: `${operation.id}:rateLimited:${operation.attempts}`, status: 'rateLimited' });
+          scheduleQuotaRetry();
+          break;
+        }
         operation.status = error.auth ? 'waitingForAuthentication' : /changed|disappeared|Duplicate|Unexpected/.test(error.message) ? 'conflict' : 'failed';
         operation.error = error.message;
         await putOperation(operation);
@@ -61,7 +77,10 @@ async function run() {
 
 self.onmessage = (event) => {
   const message = event.data;
-  if (message.type === 'open') { workbookId = message.workbookId; token = message.token; void run(); }
+  if (message.type === 'open') {
+    if (workbookId !== message.workbookId) { clearTimeout(retryTimer); retryTimer = null; retryAfter = 0; }
+    workbookId = message.workbookId; token = message.token; void run();
+  }
   if (message.type === 'token') { token = message.token; void run(); }
   if (message.type === 'retry') void run();
   if (message.type === 'status') void status();

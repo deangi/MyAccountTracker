@@ -55,4 +55,10 @@ Use this plan with a fresh Google Sheet test company. Keep the test company sepa
 - **Delete defect found and fixed:** `txn_UI Test Checking!A14:R14` initially retained only `deleted=FALSE`, `rowVersion=3`, and `lastOperationId`, losing the deleted transaction's details. The generic transaction sync path used an always-truthy empty object and wrote a blank row instead of a tombstone. v3.07 fixes that path and adds a regression test. The test Sheet's row was repaired from its worker audit entry; direct read-back confirms the original ID, date, check number, payee, description, $7 payment, `deleted=TRUE`, deletion timestamp, and operation ID. The first repair attempt was stopped by automatic approval review due to a usage limit; the retry after the stated time succeeded.
 - The final recovery bundle audit (`MyAccountTracker-sync-recovery-2026-11-15T20-26-53-050Z.json` in Downloads) has **0 pending** and acknowledged entries for 11 account additions, one 110-row import, four individual transaction additions, two edits, one delete, and three completed reconciliations.
 
+## v3.07 live tombstone retest
+
+- Added a disposable $3 EFT payment in checking with description `v3.07 tombstone live test`; it synced before deletion.
+- Deleted the row through the UI. The browser confirmation was completed by the user after computer control stopped. The app reported Saved.
+- Direct read-back of `txn_UI Test Checking!A15:R15` confirmed the row retains its transaction ID, account ID, date, `EFT` check type, payee, description, $3 payment, category, deletion timestamp, deleting operation ID, and row version 2, with `deleted=TRUE`. This verifies the v3.07 tombstone fix against the live Google Sheet.
+
 Record the app version, test file name, date, actual counts/balances, audit CSV name, and any failures in a copy of this plan for each future run. Do not mark an unexecuted step as passed.

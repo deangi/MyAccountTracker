@@ -9,7 +9,7 @@ import { useApp } from '../../store/AppContext';
 import { openPicker } from '../../services/googleSheets';
 
 export default function FileMenu({ anchorEl, open, onClose }) {
-  const { state, save, load, createNew, saveAs, migrateToV2, rebuildV2Ledger, restoreBackup } = useApp();
+  const { state, save, load, createNew, saveAs, migrateToV3, rebuildV2Ledger, restoreBackup, repairFromBackup, retrySync, downloadSyncRecovery, downloadSyncAudit } = useApp();
   const [newDialog, setNewDialog] = useState(false);
   const [saveAsDialog, setSaveAsDialog] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
@@ -21,6 +21,8 @@ export default function FileMenu({ anchorEl, open, onClose }) {
   const [validationResult, setValidationResult] = useState(null);
   const [restoreCandidate, setRestoreCandidate] = useState(null);
   const [restoreResult, setRestoreResult] = useState(null);
+  const [saveAsResult, setSaveAsResult] = useState(null);
+  const [syncDialog, setSyncDialog] = useState(false);
 
   const handleNew = () => {
     onClose();
@@ -72,13 +74,19 @@ export default function FileMenu({ anchorEl, open, onClose }) {
 
   const handleSaveAsConfirm = async () => {
     if (!title.trim()) return;
-    await saveAs(title.trim());
-    setSaveAsDialog(false);
+    try {
+      const result = await saveAs(title.trim());
+      setSaveAsDialog(false);
+      setSaveAsResult({ result });
+    } catch (error) {
+      setSaveAsDialog(false);
+      setSaveAsResult({ error: error.message });
+    }
   };
 
   const handleMigrate = async () => {
     try {
-      const result = await migrateToV2();
+      const result = await migrateToV3();
       setMigrationDialog(false);
       setConversionResult({ result, error: '' });
     } catch (err) {
@@ -113,16 +121,19 @@ export default function FileMenu({ anchorEl, open, onClose }) {
     if (!file) return;
     try {
       const backup = JSON.parse(await file.text());
-      const meta = Array.isArray(backup._meta) ? backup._meta[0] : null;
+      const stateData = backup.currentState || backup;
+      const meta = Array.isArray(stateData._meta) ? stateData._meta[0] : null;
       setRestoreCandidate({ backup, name: file.name, title: meta?.title || '(untitled backup)', version: meta?.version || '1' });
     } catch (err) {
       setRestoreResult({ error: `Could not read the JSON backup: ${err.message}` });
     }
   };
 
-  const handleRestoreConfirm = () => {
+  const handleRestoreConfirm = async () => {
     try {
-      const result = restoreBackup(restoreCandidate.backup);
+      const result = state.meta.version === '3'
+        ? await repairFromBackup(restoreCandidate.backup)
+        : restoreBackup(restoreCandidate.backup);
       setRestoreCandidate(null);
       setRestoreResult({ result });
     } catch (err) {
@@ -148,28 +159,43 @@ export default function FileMenu({ anchorEl, open, onClose }) {
           <ListItemIcon><FolderOpen /></ListItemIcon>
           <ListItemText>Open</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleSave} disabled={!state.isAuthenticated}>
+        <MenuItem onClick={handleSave} disabled={!state.isAuthenticated || state.meta.version !== '1'}>
           <ListItemIcon><Save /></ListItemIcon>
           <ListItemText>Save</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleSaveAs} disabled={!state.isAuthenticated}>
+        <MenuItem onClick={handleSaveAs} disabled={!state.isAuthenticated || state.meta.version !== '3'}>
           <ListItemIcon><SaveAs /></ListItemIcon>
           <ListItemText>Save As</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleRestore} disabled={!state.isAuthenticated}>
+        <MenuItem onClick={handleRestore} disabled={!state.isAuthenticated || state.meta.version === '2'}>
           <ListItemIcon><Restore /></ListItemIcon>
-          <ListItemText>Restore JSON Backup</ListItemText>
+          <ListItemText>{state.meta.version === '3' ? 'Repair from JSON Backup' : 'Restore JSON Backup'}</ListItemText>
         </MenuItem>
-        {state.meta.version === '1' && (
-          <MenuItem onClick={() => { onClose(); setMigrationDialog(true); }} disabled={!state.isAuthenticated}>
-            <ListItemIcon><Upgrade /></ListItemIcon>
-            <ListItemText>Convert to Format 2</ListItemText>
+        {state.meta.version === '3' && (
+          <MenuItem onClick={() => { onClose(); setSyncDialog(true); }}>
+            <ListItemText>Sync Status</ListItemText>
           </MenuItem>
         )}
-        {state.meta.version === '2' && (
+        {state.meta.version === '3' && (
+          <MenuItem onClick={() => { onClose(); retrySync(); }}>
+            <ListItemText>Retry Pending Sync ({state.syncStatus.pending})</ListItemText>
+          </MenuItem>
+        )}
+        {state.meta.version === '3' && (
+          <MenuItem onClick={() => { onClose(); downloadSyncRecovery(); }}>
+            <ListItemText>Download Sync Recovery Bundle</ListItemText>
+          </MenuItem>
+        )}
+        {['1', '2'].includes(state.meta.version) && (
+          <MenuItem onClick={() => { onClose(); setMigrationDialog(true); }} disabled={!state.isAuthenticated}>
+            <ListItemIcon><Upgrade /></ListItemIcon>
+            <ListItemText>Convert to Format 3</ListItemText>
+          </MenuItem>
+        )}
+        {['2', '3'].includes(state.meta.version) && (
           <MenuItem onClick={handleRebuildLedger} disabled={!state.isAuthenticated}>
             <ListItemIcon><Sync /></ListItemIcon>
-            <ListItemText>Validate V2 Ledger</ListItemText>
+            <ListItemText>Validate Double-Entry Ledger</ListItemText>
           </MenuItem>
         )}
       </Menu>
@@ -227,13 +253,39 @@ export default function FileMenu({ anchorEl, open, onClose }) {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={Boolean(saveAsResult)} onClose={() => setSaveAsResult(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Save As Result</DialogTitle>
+        <DialogContent>
+          {saveAsResult?.error ? <Alert severity="error">{saveAsResult.error}</Alert>
+            : <Alert severity="success">Created and verified &quot;{saveAsResult?.result?.title}&quot;.</Alert>}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setSaveAsResult(null)}>Close</Button></DialogActions>
+      </Dialog>
+
+      <Dialog open={syncDialog} onClose={() => setSyncDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Sync Status</DialogTitle>
+        <DialogContent>
+          <Typography>Pending changes: {state.syncStatus.pending}</Typography>
+          <Typography>Failed or conflicted: {state.syncStatus.failed}</Typography>
+          {state.syncStatus.lastSyncedAt && <Typography>Last synced: {new Date(state.syncStatus.lastSyncedAt).toLocaleString()}</Typography>}
+          {state.syncStatus.conflict && <Alert severity="error" sx={{ mt: 2 }}>A Sheet row changed outside this app. Download a recovery bundle and use a repair copy to resolve the conflict.</Alert>}
+          {state.syncStatus.waitingForAuthentication && <Alert severity="warning" sx={{ mt: 2 }}>Sign in to Google to resume syncing.</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={downloadSyncRecovery}>Download Recovery Bundle</Button>
+          <Button onClick={downloadSyncAudit}>Download Audit CSV</Button>
+          <Button onClick={retrySync}>Retry</Button>
+          <Button onClick={() => setSyncDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={migrationDialog} onClose={() => setMigrationDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Convert Spreadsheet to Format 2</DialogTitle>
+        <DialogTitle>Convert Spreadsheet to Format 3</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>
-            The original file is renamed as a dated backup before conversion. A new Format 2 workbook is then created with the original file name.
+            The original file is renamed as a dated backup before conversion. A new Format 3 workbook is then created with the original file name.
           </Alert>
-          <p>The converter validates accounts, transactions, linked transfers, and reconciliation references before creating the new workbook.</p>
+          <p>Format 3 stores canonical account registers only. Double-entry information is generated only for validation and reports.</p>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setMigrationDialog(false)}>Cancel</Button>
@@ -242,18 +294,21 @@ export default function FileMenu({ anchorEl, open, onClose }) {
       </Dialog>
 
       <Dialog open={Boolean(conversionResult)} onClose={() => setConversionResult(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Format 2 Conversion Report</DialogTitle>
+        <DialogTitle>Format 3 Conversion Report</DialogTitle>
         <DialogContent>
           {conversionResult?.error ? (
             <>
-              <Alert severity="error" sx={{ mb: 2 }}>Conversion did not complete. The new Format 2 sheet was not reported as successful.</Alert>
+              <Alert severity="error" sx={{ mb: 2 }}>Conversion did not complete. The new Format 3 sheet was not reported as successful.</Alert>
               <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{conversionResult.error}</Typography>
             </>
           ) : conversionResult?.result && (
             <>
-              <Alert severity="success" sx={{ mb: 2 }}>Conversion completed and the validated Format 2 sheet was saved to Google Sheets.</Alert>
+              <Alert severity="success" sx={{ mb: 2 }}>Conversion completed and the validated Format 3 sheet was saved to Google Sheets.</Alert>
               <Typography component="div" variant="body2">
-                <p>The original workbook was retained as the dated V1 backup. The new Format 2 workbook has the original title.</p>
+                <p>The original workbook was retained as a dated backup. The new Format 3 workbook has the original title.</p>
+                {conversionResult.result.snapshotName && (
+                  <p>A local safety snapshot was downloaded as <strong>{conversionResult.result.snapshotName}</strong>.</p>
+                )}
                 {conversionResult.result.warnings?.length > 0 && (
                   <Alert severity="warning">{conversionResult.result.warnings.join(' ')}</Alert>
                 )}
@@ -265,7 +320,7 @@ export default function FileMenu({ anchorEl, open, onClose }) {
       </Dialog>
 
       <Dialog open={Boolean(validationResult)} onClose={() => setValidationResult(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>V2 Ledger Validation</DialogTitle>
+        <DialogTitle>Double-Entry Ledger Validation</DialogTitle>
         <DialogContent>
           {validationResult?.error ? (
             <Alert severity="error">{validationResult.error}</Alert>
@@ -299,10 +354,12 @@ export default function FileMenu({ anchorEl, open, onClose }) {
       </Dialog>
 
       <Dialog open={Boolean(restoreCandidate)} onClose={() => setRestoreCandidate(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Restore JSON Backup</DialogTitle>
+        <DialogTitle>{state.meta.version === '3' ? 'Repair from JSON Backup' : 'Restore JSON Backup'}</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            This will replace the data currently shown for &quot;{state.spreadsheetTitle || state.meta.title}&quot; in this browser session. It will not write to Google Sheets until you select Save.
+            {state.meta.version === '3'
+              ? 'A new repaired copy will be created and verified. The original Google Sheet remains available.'
+              : `This will stage replacement data for "${state.spreadsheetTitle || state.meta.title}". It will not write to Google Sheets until you select Save.`}
           </Alert>
           <Typography variant="body2">
             Backup: {restoreCandidate?.name}<br />
@@ -312,7 +369,7 @@ export default function FileMenu({ anchorEl, open, onClose }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setRestoreCandidate(null)}>Cancel</Button>
-          <Button onClick={handleRestoreConfirm} variant="contained" color="warning">Restore and Stage Changes</Button>
+          <Button onClick={handleRestoreConfirm} variant="contained" color="warning" disabled={state.loading}>{state.meta.version === '3' ? 'Create Repaired Copy' : 'Restore and Stage Changes'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -323,12 +380,12 @@ export default function FileMenu({ anchorEl, open, onClose }) {
             <Alert severity="error" sx={{ whiteSpace: 'pre-wrap' }}>{restoreResult.error}</Alert>
           ) : restoreResult?.result && (
             <>
-              <Alert severity="success" sx={{ mb: 2 }}>The backup was validated and staged. It has not yet been written to Google Sheets.</Alert>
+              <Alert severity="success" sx={{ mb: 2 }}>{restoreResult.result.id ? `Created and verified repaired copy "${restoreResult.result.title}".` : 'The backup was validated and staged. It has not yet been written to Google Sheets.'}</Alert>
               <Typography variant="body2">
                 Restored {restoreResult.result.counts.accounts} accounts, {restoreResult.result.counts.transactions} transactions, {restoreResult.result.counts.payees} payees, {restoreResult.result.counts.categories} categories, and {restoreResult.result.counts.reconciliations} reconciliation records.
               </Typography>
               {restoreResult.result.warnings.length > 0 && <Alert severity="warning" sx={{ mt: 2 }}>{restoreResult.result.warnings.join(' ')}</Alert>}
-              <Alert severity="info" sx={{ mt: 2 }}>Review the data, then select Save to persist the restored data and rebuild the Format 2 ledger tabs.</Alert>
+              {!restoreResult.result.id && <Alert severity="info" sx={{ mt: 2 }}>Review the data, then select Save to persist the restored data.</Alert>}
             </>
           )}
         </DialogContent>

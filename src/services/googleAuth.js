@@ -59,6 +59,27 @@ export function signIn() {
   tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
+export function renewAccessTokenSilently() {
+  if (!tokenClient) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(false), 15000);
+    tokenClient.callback = (response) => {
+      clearTimeout(timeout);
+      if (response.error || !response.access_token) {
+        accessToken = null;
+        onAuthChange?.(false);
+        resolve(false);
+        return;
+      }
+      accessToken = response.access_token;
+      tokenAcquiredAt = Date.now();
+      onAuthChange?.(true);
+      resolve(true);
+    };
+    tokenClient.requestAccessToken({ prompt: '' });
+  });
+}
+
 export function signOut() {
   if (accessToken) {
     window.google.accounts.oauth2.revoke(accessToken, () => {

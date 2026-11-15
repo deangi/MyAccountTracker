@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
   Box, Typography, Button, List, ListItem, ListItemText,
-  IconButton, TextField, Paper, InputAdornment,
+  TextField, Paper, InputAdornment,
 } from '@mui/material';
-import { Add, Delete, Search } from '@mui/icons-material';
+import { Add, Search } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 
 export default function CategoryManager() {
@@ -17,10 +17,6 @@ export default function CategoryManager() {
     if (state.categories.find((c) => c.name.toLowerCase() === name.toLowerCase())) return;
     dispatch({ type: 'ADD_CATEGORY', payload: { id: generateUUID(), name } });
     setNewCategory('');
-  };
-
-  const handleDelete = (id) => {
-    dispatch({ type: 'DELETE_CATEGORY', payload: id });
   };
 
   const handleKeyDown = (e) => {
@@ -56,11 +52,6 @@ export default function CategoryManager() {
           {filtered.map((category) => (
             <ListItem
               key={category.id}
-              secondaryAction={
-                <IconButton edge="end" size="small" onClick={() => handleDelete(category.id)}>
-                  <Delete fontSize="small" />
-                </IconButton>
-              }
             >
               <ListItemText primary={category.name} />
             </ListItem>

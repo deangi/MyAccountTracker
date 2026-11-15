@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
   Box, Typography, Button, List, ListItem, ListItemText,
-  IconButton, TextField, Paper, InputAdornment,
+  TextField, Paper, InputAdornment,
 } from '@mui/material';
-import { Add, Delete, Search } from '@mui/icons-material';
+import { Add, Search } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 
 export default function PayeeManager() {
@@ -17,10 +17,6 @@ export default function PayeeManager() {
     if (state.payees.find((p) => p.name.toLowerCase() === name.toLowerCase())) return;
     dispatch({ type: 'ADD_PAYEE', payload: { id: generateUUID(), name } });
     setNewPayee('');
-  };
-
-  const handleDelete = (id) => {
-    dispatch({ type: 'DELETE_PAYEE', payload: id });
   };
 
   const handleKeyDown = (e) => {
@@ -56,11 +52,6 @@ export default function PayeeManager() {
           {filtered.map((payee) => (
             <ListItem
               key={payee.id}
-              secondaryAction={
-                <IconButton edge="end" size="small" onClick={() => handleDelete(payee.id)}>
-                  <Delete fontSize="small" />
-                </IconButton>
-              }
             >
               <ListItemText primary={payee.name} />
             </ListItem>

@@ -1,5 +1,5 @@
 import { getAccessToken } from './googleAuth';
-import { GOOGLE_API_KEY, APP_VERSION, CURRENT_SHEET_FORMAT_VERSION, SHEET_HEADERS, SHEET_TABS, TRANSACTION_HEADERS, TXN_TAB_PREFIX, V2_LEDGER_TABS, getSheetHeadersForVersion, getSheetTabsForVersion, sanitizeTabName } from '../config';
+import { GOOGLE_API_KEY, APP_VERSION, CURRENT_SHEET_FORMAT_VERSION, LEGACY_V2_SHEET_FORMAT_VERSION, SHEET_HEADERS, SHEET_TABS, TRANSACTION_HEADERS, TXN_TAB_PREFIX, V2_LEDGER_TABS, getSheetHeadersForVersion, getSheetTabsForVersion, getTransactionHeadersForVersion, sanitizeTabName } from '../config';
 import { netWorthClassFor } from '../utils/accountTypes';
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -24,7 +24,7 @@ async function sheetsRequest(url, options = {}) {
 
 export async function createSpreadsheet(title, formatVersion = CURRENT_SHEET_FORMAT_VERSION) {
   // A newly-created account file is always initialized with its format marker.
-  // This makes a partially interrupted first save recognizably Format 2 instead
+  // This makes a partially interrupted first save recognizably versioned instead
   // of falling back to the legacy, unversioned Format 1 behavior on reopen.
   const initialMeta = {
     title,
@@ -119,6 +119,14 @@ async function getSheetProperties(spreadsheetId) {
   }));
 }
 
+export async function assertNoPersistedLedgerTabs(spreadsheetId) {
+  const tabNames = new Set((await getSheetProperties(spreadsheetId)).map((sheet) => sheet.title));
+  const legacyTabs = Object.values(V2_LEDGER_TABS).filter((tab) => tabNames.has(tab));
+  if (legacyTabs.length) {
+    throw new Error(`Format 3 verification failed: derived ledger tab(s) were persisted: ${legacyTabs.join(', ')}.`);
+  }
+}
+
 // Older account files predate newly-added fixed tabs. Add only missing tabs so
 // opening an existing file remains backward compatible.
 async function ensureFixedTabs(spreadsheetId, formatVersion) {
@@ -151,10 +159,10 @@ async function ensureFixedTabs(spreadsheetId, formatVersion) {
 function parseRows(rows) {
   if (rows.length === 0) return [];
   const headers = rows[0];
-  return rows.slice(1).map((row) => {
+  return rows.slice(1).filter((row) => row.some((cell) => cell !== '' && cell != null)).map((row) => {
     const obj = {};
     headers.forEach((h, i) => {
-      obj[h] = row[i] || '';
+      obj[h] = row[i] ?? '';
     });
     return obj;
   });
@@ -199,7 +207,9 @@ export async function readAllTabs(spreadsheetId) {
     }
   });
 
-  result.transactions = allTransactions;
+  // Deleted Format 3 rows remain in Sheets for audit/recovery, but are never
+  // returned as active register transactions.
+  result.transactions = allTransactions.filter((transaction) => transaction.deleted !== 'TRUE');
   result.formatVersion = formatVersion;
   return result;
 }
@@ -259,7 +269,11 @@ export async function writeAllTabs(spreadsheetId, appData) {
   const transactions = appData.transactions || [];
   assertTransactionsBelongToAccounts(accounts, transactions);
   const formatVersion = appData[SHEET_TABS.META]?.[0]?.version || '1';
+  if (formatVersion === LEGACY_V2_SHEET_FORMAT_VERSION) {
+    throw new Error('Format 2 files must be converted to Format 3 before saving. Format 3 stores only canonical account registers.');
+  }
   const headersByTab = getSheetHeadersForVersion(formatVersion);
+  const transactionHeaders = getTransactionHeadersForVersion(formatVersion);
   const fixedTabs = getSheetTabsForVersion(formatVersion);
 
   // 1. Discover existing tabs
@@ -291,7 +305,7 @@ export async function writeAllTabs(spreadsheetId, appData) {
   }
 
   // 3. Clear fixed tabs
-  const writableTabs = fixedTabs.filter((tab) => tab !== V2_LEDGER_TABS.CONVERSION_REPORT);
+  const writableTabs = fixedTabs;
   const clearRanges = writableTabs.map((tab) => `'${tab}'!A:Z`);
   await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values:batchClear`, {
     method: 'POST',
@@ -300,9 +314,8 @@ export async function writeAllTabs(spreadsheetId, appData) {
 
   // 4. Write fixed tabs
   const updateData = [];
-  const ledgerData = formatVersion === CURRENT_SHEET_FORMAT_VERSION ? buildV2LedgerData(appData) : {};
+  const ledgerData = {};
   for (const [tabName, headers] of Object.entries(headersByTab)) {
-    if (tabName === V2_LEDGER_TABS.CONVERSION_REPORT) continue;
     let records = ledgerData[tabName] || appData[tabName] || [];
     if (tabName === SHEET_TABS.PAYEES || tabName === SHEET_TABS.CATEGORIES) {
       records = records.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -330,12 +343,12 @@ export async function writeAllTabs(spreadsheetId, appData) {
 
   for (let i = 0; i < accounts.length; i++) {
     const acctTxns = (txnByAccount.get(accounts[i].id) || []).slice().sort((a, b) => b.date.localeCompare(a.date));
-    const rows = [TRANSACTION_HEADERS];
+    const rows = [transactionHeaders];
     acctTxns.forEach((txn) => {
-      rows.push(TRANSACTION_HEADERS.map((h) => txn[h] ?? ''));
+      rows.push(transactionHeaders.map((h) => txn[h] ?? ''));
     });
     updateData.push({
-      range: `'${newTxnTabNames[i]}'!A1:${columnLetter(TRANSACTION_HEADERS.length)}${rows.length}`,
+      range: `'${newTxnTabNames[i]}'!A1:${columnLetter(transactionHeaders.length)}${rows.length}`,
       values: rows,
     });
   }
@@ -354,6 +367,38 @@ export async function writeAllTabs(spreadsheetId, appData) {
 export async function getSpreadsheetTitle(spreadsheetId) {
   const data = await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}?fields=properties.title`);
   return data.properties?.title || 'Untitled';
+}
+
+export async function copySpreadsheet(spreadsheetId, title) {
+  const token = getAccessToken();
+  if (!token) throw new Error('Sign in to Google before copying the file.');
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}/copy?fields=id,name&supportsAllDrives=true`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: title }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.id) throw new Error(result.error?.message || `Google Drive copy failed (${response.status}).`);
+  return result.id;
+}
+
+export async function updateWorkbookMeta(spreadsheetId, changes) {
+  const range = `'${SHEET_TABS.META}'!A:Z`;
+  const current = await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(range)}`);
+  const [fields, values = []] = current.values || [];
+  if (!fields?.includes('version')) throw new Error('The copy has no valid format marker.');
+  const next = fields.map((field, index) => changes[field] ?? values[index] ?? '');
+  await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(`'${SHEET_TABS.META}'!A2:${columnLetter(fields.length)}2`)}?valueInputOption=RAW`, {
+    method: 'PUT', body: JSON.stringify({ values: [next] }),
+  });
+}
+
+export async function readWorkbookSnapshot(spreadsheetId) {
+  const properties = await getSheetProperties(spreadsheetId);
+  const ranges = properties.map((sheet) => `'${sheet.title.replace(/'/g, "''")}'!A:Z`);
+  const params = ranges.map((range) => `ranges=${encodeURIComponent(range)}`).join('&');
+  const response = await sheetsRequest(`${SHEETS_BASE}/${spreadsheetId}/values:batchGet?${params}`);
+  return Object.fromEntries(properties.map((sheet, index) => [sheet.title, response.valueRanges?.[index]?.values || []]));
 }
 
 export async function renameSpreadsheet(spreadsheetId, title) {

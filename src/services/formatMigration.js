@@ -1,8 +1,13 @@
-import { APP_VERSION, CURRENT_SHEET_FORMAT_VERSION, SHEET_TABS } from '../config';
-import { createSpreadsheet, readAllTabs, renameSpreadsheet, writeAllTabs, writeConversionReport } from './googleSheets';
+import { APP_VERSION, CURRENT_SHEET_FORMAT_VERSION, SHEET_TABS, V3_TRANSACTION_HEADERS, getSheetHeadersForVersion } from '../config';
+import { assertNoPersistedLedgerTabs, buildV2LedgerData, createSpreadsheet, readAllTabs, renameSpreadsheet, writeAllTabs } from './googleSheets';
 
 function moneyIsValid(value) {
   return value === '' || value == null || (Number.isFinite(Number(value)) && Number(value) >= 0);
+}
+
+function checkNumberIsValid(value) {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  return normalized === '' || ['DEP', 'EFT', 'TXFR'].includes(normalized) || /^\d+$/.test(normalized);
 }
 
 export function validateV1Data(data) {
@@ -19,6 +24,7 @@ export function validateV1Data(data) {
     transactionIds.add(transaction.id);
     if (!accountIds.has(transaction.accountId)) errors.push(`Transaction ${transaction.id || '(unknown)'} references an unknown account.`);
     if (!moneyIsValid(transaction.payment) || !moneyIsValid(transaction.deposit)) errors.push(`Transaction ${transaction.id || '(unknown)'} has an invalid amount.`);
+    if (!checkNumberIsValid(transaction.checkNum)) errors.push(`Transaction ${transaction.id || '(unknown)'} has an invalid check number.`);
   }
   const transfers = new Map();
   for (const transaction of data.transactions || []) {
@@ -136,16 +142,19 @@ export async function synchronizeAndValidateV2Ledger(spreadsheetId) {
   };
 }
 
-export async function migrateV1ToV2({ spreadsheetId, data }) {
+export async function migrateToV3({ spreadsheetId, data }) {
   const validation = validateV1Data(data);
   if (validation.errors.length) throw new Error(`Conversion validation failed:\n${validation.errors.join('\n')}`);
-  if ((data[SHEET_TABS.META]?.[0]?.version || '1') !== '1') throw new Error('Only Format 1 spreadsheets can be converted to Format 2.');
+  const sourceFormatVersion = data[SHEET_TABS.META]?.[0]?.version || '1';
+  if (!['1', '2'].includes(sourceFormatVersion)) throw new Error('Only Format 1 or Format 2 spreadsheets can be converted to Format 3.');
 
   const sourceTitle = data[SHEET_TABS.META]?.[0]?.title || 'MyAccountTracker';
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupTitle = `${sourceTitle} — Backup Before Format 2 Migration — ${timestamp}`;
+  const backupTitle = `${sourceTitle} — Backup Before Format 3 Migration — ${timestamp}`;
+  const snapshotName = downloadMigrationSnapshot(data, sourceTitle, timestamp, validation);
   // The original is the safest backup because it retains all user-managed
-  // formatting and non-app content. Rename it before creating the V2 file.
+  // formatting and non-app content. Rename it only after the local snapshot
+  // has been prepared and downloaded.
   await renameSpreadsheet(spreadsheetId, backupTitle);
   const backupId = spreadsheetId;
   const targetTitle = sourceTitle;
@@ -153,11 +162,19 @@ export async function migrateV1ToV2({ spreadsheetId, data }) {
   try {
     targetId = await createSpreadsheet(targetTitle);
   } catch (err) {
-    throw new Error(`The original workbook was safely renamed to "${backupTitle}", but the new Format 2 workbook could not be created: ${err.message}`);
+    throw new Error(`The original workbook was safely renamed to "${backupTitle}", but the new Format 3 workbook could not be created: ${err.message}`);
   }
   const migratedAt = new Date().toISOString();
   const migratedData = {
     ...data,
+    transactions: (data.transactions || []).map((transaction) => ({
+      ...transaction,
+      deleted: 'FALSE',
+      deletedAt: '',
+      deletedByOperationId: '',
+      rowVersion: transaction.rowVersion || '1',
+      lastOperationId: '',
+    })),
     [SHEET_TABS.META]: [{
       ...(data[SHEET_TABS.META]?.[0] || {}),
       title: targetTitle,
@@ -170,30 +187,75 @@ export async function migrateV1ToV2({ spreadsheetId, data }) {
     }],
   };
   await writeAllTabs(targetId, migratedData);
-  try {
-    await synchronizeAndValidateV2Ledger(targetId);
-  } catch (err) {
-    await writeConversionReport(targetId, {
-      runAt: migratedAt,
-      sourceSpreadsheetId: spreadsheetId,
-      backupSpreadsheetId: backupId,
-      sourceFormatVersion: '1',
+  await assertNoPersistedLedgerTabs(targetId);
+  const persistedData = await readAllTabs(targetId);
+  assertExactCanonicalCopy(migratedData, persistedData);
+  const ledger = buildV2LedgerData(migratedData);
+  const ledgerValidation = validateV2Ledger({ ...migratedData, ...ledger });
+  if (ledgerValidation.errors.length) throw new Error(`Format 3 ledger validation failed:\n${ledgerValidation.errors.join('\n')}`);
+  return { targetId, targetTitle, backupId, backupTitle, snapshotName, warnings: validation.warnings };
+}
+
+function downloadMigrationSnapshot(data, sourceTitle, timestamp, validation) {
+  if (typeof document === 'undefined') return '';
+  const safeTitle = sourceTitle.replace(/[\\/:*?"<>|]/g, '-').slice(0, 80) || 'MyAccountTracker';
+  const snapshotName = `${safeTitle}-before-format-3-migration-${timestamp}.json`;
+  const snapshot = {
+    ...data,
+    migrationSnapshot: {
+      createdAt: new Date().toISOString(),
+      sourceFormatVersion: data[SHEET_TABS.META]?.[0]?.version || '1',
       targetFormatVersion: CURRENT_SHEET_FORMAT_VERSION,
-      appVersion: APP_VERSION,
-      status: 'failed_validation',
-      details: err.message,
-    });
-    throw err;
+      validation,
+    },
+  };
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = snapshotName;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return snapshotName;
+}
+
+function asFieldMap(records, fields, label) {
+  const values = new Map();
+  for (const record of records || []) {
+    const id = record.id;
+    if (!id) throw new Error(`Format 3 verification failed: ${label} has a record without an ID.`);
+    values.set(id, fields.map((field) => String(record[field] ?? '')).join('\u0001'));
   }
-  await writeConversionReport(targetId, {
-    runAt: migratedAt,
-    sourceSpreadsheetId: spreadsheetId,
-    backupSpreadsheetId: backupId,
-    sourceFormatVersion: '1',
-    targetFormatVersion: CURRENT_SHEET_FORMAT_VERSION,
-    appVersion: APP_VERSION,
-    status: validation.warnings.length ? 'completed_with_warnings' : 'completed',
-    details: validation.warnings.join(' ') || 'Validated conversion completed.',
-  });
-  return { targetId, targetTitle, backupId, backupTitle, warnings: validation.warnings };
+  return values;
+}
+
+function assertSameFieldMap(expected, actual, label) {
+  if (expected.size !== actual.size) {
+    throw new Error(`Format 3 verification failed: expected ${expected.size} ${label} record(s), read back ${actual.size}.`);
+  }
+  for (const [id, fields] of expected) {
+    if (!actual.has(id)) throw new Error(`Format 3 verification failed: ${label} ${id} is missing after write.`);
+    if (actual.get(id) !== fields) throw new Error(`Format 3 verification failed: ${label} ${id} differs after write.`);
+  }
+}
+
+export function assertExactCanonicalCopy(expectedData, actualData) {
+  const headers = getSheetHeadersForVersion(CURRENT_SHEET_FORMAT_VERSION);
+  for (const tab of Object.values(SHEET_TABS)) {
+    const fields = headers[tab] || [];
+    const expected = expectedData[tab] || [];
+    const actual = actualData[tab] || [];
+    if (tab === SHEET_TABS.META) {
+      const expectedValue = fields.map((field) => String(expected[0]?.[field] ?? '')).join('\u0001');
+      const actualValue = fields.map((field) => String(actual[0]?.[field] ?? '')).join('\u0001');
+      if (expectedValue !== actualValue) throw new Error('Format 3 verification failed: file metadata differs after write.');
+    } else {
+      assertSameFieldMap(asFieldMap(expected, fields, tab), asFieldMap(actual, fields, tab), tab);
+    }
+  }
+  assertSameFieldMap(
+    asFieldMap(expectedData.transactions || [], V3_TRANSACTION_HEADERS, 'transaction'),
+    asFieldMap(actualData.transactions || [], V3_TRANSACTION_HEADERS, 'transaction'),
+    'transaction',
+  );
 }

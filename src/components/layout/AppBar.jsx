@@ -23,6 +23,7 @@ export default function AppBarComponent({ onMenuClick }) {
   }, []);
 
   const { hasUnsavedChanges, dirtySince, lastSaveTime } = state.saveStatus;
+  const legacyReadOnly = state.meta.version === '2';
   const tokenAge = now - (getTokenAcquiredAt() ?? now);
   const dirtyAge = dirtySince ? now - dirtySince : 0;
   const isUrgent = hasUnsavedChanges && (tokenAge > TOKEN_EXPIRY_WARNING_MS || dirtyAge > DIRTY_WARNING_MS);
@@ -45,7 +46,9 @@ export default function AppBarComponent({ onMenuClick }) {
     setExpiryPromptOpen(false);
   };
 
-  const statusText = hasUnsavedChanges
+  const statusText = legacyReadOnly
+    ? 'Format 2 — convert to Format 3'
+    : hasUnsavedChanges
     ? 'Unsaved changes'
     : lastSaveTime
     ? `Saved ${new Date(lastSaveTime).toLocaleTimeString()}`
@@ -95,10 +98,10 @@ export default function AppBarComponent({ onMenuClick }) {
             size="small"
             color={isUrgent ? 'error' : hasUnsavedChanges ? 'warning' : 'success'}
             variant="outlined"
-            {...(hasUnsavedChanges && { onClick: () => save() })}
+            {...(hasUnsavedChanges && !legacyReadOnly && { onClick: () => save() })}
             sx={{
               mr: 2, color: 'inherit', borderColor: 'rgba(255,255,255,0.5)',
-              ...(hasUnsavedChanges && { cursor: 'pointer' }),
+              ...(hasUnsavedChanges && !legacyReadOnly && { cursor: 'pointer' }),
             }}
           />
         )}

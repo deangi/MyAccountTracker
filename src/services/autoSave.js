@@ -78,8 +78,8 @@ function resetTimer() {
   saveTimer = setTimeout(async () => {
     if (hasUnsavedChanges && saveFn) {
       try {
-        await saveFn();
-        markClean();
+        const saved = await saveFn();
+        if (saved === true) markClean();
       } catch (err) {
         console.error('Auto-save failed:', err);
       }

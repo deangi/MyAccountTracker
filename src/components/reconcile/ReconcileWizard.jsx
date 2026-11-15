@@ -122,32 +122,30 @@ export default function ReconcileWizard() {
     }
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     const reconciliationId = generateUUID();
-
-    dispatch({
-      type: 'ADD_RECONCILIATION',
-      payload: {
+    const draft = draftForAccount(accountId);
+    try {
+      const queued = await dispatch({
+        type: 'COMPLETE_RECONCILIATION',
+        payload: {
+          reconciliation: {
         id: reconciliationId,
         accountId,
         date: statementDate,
         statementOpeningBalance: openingBalance,
         statementClosingBalance: closingBalance,
         transactionIds: [...selectedIds].join(','),
-      },
-    });
-
-    dispatch({
-      type: 'UPDATE_TRANSACTIONS_BATCH',
-      payload: [...selectedIds].map((id) => ({
-        id,
-        cleared: 'TRUE',
-        reconciliationId,
-      })),
-    });
-
-    const draft = draftForAccount(accountId);
-    if (draft) dispatch({ type: 'DELETE_RECONCILE_DRAFT', payload: draft.id });
+          },
+          transactionIds: [...selectedIds],
+          draftId: draft?.id || '',
+        },
+      });
+      if (queued === false) return;
+    } catch (error) {
+      window.alert(`Reconciliation was not queued: ${error.message}`);
+      return;
+    }
 
     // Reset wizard
     setActiveStep(0);

@@ -18,9 +18,10 @@ export const IDLE_THRESHOLD_MS = 2 * 60 * 1000;          // 2 minutes of no inpu
 export const TOKEN_PREEXPIRY_SAVE_MS = 55 * 60 * 1000;   // start pushing saves once token is >55 min old
 export const IDLE_CHECK_INTERVAL_MS = 30 * 1000;         // re-evaluate every 30s
 export const APP_TITLE = 'MyAccountTracker';
-export const APP_VERSION = '2.34';
-export const APP_BUILD_DATE = '2026-11-13';
-export const CURRENT_SHEET_FORMAT_VERSION = '2';
+export const APP_VERSION = '3.04';
+export const APP_BUILD_DATE = '2026-11-15';
+export const CURRENT_SHEET_FORMAT_VERSION = '3';
+export const LEGACY_V2_SHEET_FORMAT_VERSION = '2';
 
 export const SHEET_TABS = {
   META: '_meta',
@@ -56,19 +57,44 @@ export const V2_SHEET_HEADERS = {
   conversion_report: ['runAt', 'sourceSpreadsheetId', 'backupSpreadsheetId', 'sourceFormatVersion', 'targetFormatVersion', 'appVersion', 'status', 'details'],
 };
 
+// Format 3 persists only the canonical account registers. Double-entry data
+// is derived in memory for validation and financial reports.
+export const V3_SHEET_HEADERS = {
+  ...V2_SHEET_HEADERS,
+};
+for (const tab of Object.values(V2_LEDGER_TABS)) delete V3_SHEET_HEADERS[tab];
+
 export function getSheetTabsForVersion(version) {
-  return version === CURRENT_SHEET_FORMAT_VERSION
+  return version === LEGACY_V2_SHEET_FORMAT_VERSION
     ? [...Object.values(SHEET_TABS), ...Object.values(V2_LEDGER_TABS)]
     : Object.values(SHEET_TABS);
 }
 
 export function getSheetHeadersForVersion(version) {
-  return version === CURRENT_SHEET_FORMAT_VERSION ? V2_SHEET_HEADERS : SHEET_HEADERS;
+  if (version === LEGACY_V2_SHEET_FORMAT_VERSION) return V2_SHEET_HEADERS;
+  if (version === CURRENT_SHEET_FORMAT_VERSION) return V3_SHEET_HEADERS;
+  return SHEET_HEADERS;
 }
 
 export const TXN_TAB_PREFIX = 'txn_';
 
 export const TRANSACTION_HEADERS = ['id', 'accountId', 'date', 'checkNum', 'payee', 'description', 'payment', 'deposit', 'category', 'cleared', 'reconciliationId', 'transferId', 'transferAccountId'];
+
+// Format 3 reserves stable fields for the incremental-sync worker. They are
+// initialized during conversion now; Phase 2 will begin using them for row
+// location, optimistic concurrency, and tombstones.
+export const V3_TRANSACTION_HEADERS = [
+  ...TRANSACTION_HEADERS,
+  'deleted',
+  'deletedAt',
+  'deletedByOperationId',
+  'rowVersion',
+  'lastOperationId',
+];
+
+export function getTransactionHeadersForVersion(version) {
+  return version === CURRENT_SHEET_FORMAT_VERSION ? V3_TRANSACTION_HEADERS : TRANSACTION_HEADERS;
+}
 
 export function sanitizeTabName(name) {
   const clean = name.replace(/[\\/*?[\]]/g, '');

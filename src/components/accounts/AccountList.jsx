@@ -85,7 +85,7 @@ export default function AccountList({ onViewAccount }) {
                   <IconButton size="small" onClick={() => handleEdit(account)}>
                     <Edit fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" onClick={() => handleDelete(account.id)}>
+                  <IconButton size="small" onClick={() => handleDelete(account.id)} disabled={state.meta.version === '3'} title={state.meta.version === '3' ? 'Account archiving is not available yet' : 'Delete account'}>
                     <Delete fontSize="small" />
                   </IconButton>
                 </CardActions>

@@ -38,7 +38,8 @@ export default function LoginButton() {
     setSaving(true);
     setSaveError('');
     try {
-      await save();
+      const saved = await save();
+      if (saved !== true) throw new Error('Save did not complete.');
       signOut();
     } catch (err) {
       console.error('Save before sign-out failed:', err);

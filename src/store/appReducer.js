@@ -20,6 +20,8 @@ export function reduceAppState(state, action, initialState, SHEET_TABS, V2_LEDGE
       return { ...state, loading: action.payload };
     case 'SET_ERROR':
       return { ...state, error: action.payload };
+    case 'SET_SYNC_STATUS':
+      return { ...state, syncStatus: action.payload };
     case 'SET_SPREADSHEET':
       return { ...state, spreadsheetId: action.payload.id, spreadsheetTitle: action.payload.title };
     case 'LOAD_DATA':
@@ -87,12 +89,15 @@ export function reduceAppState(state, action, initialState, SHEET_TABS, V2_LEDGE
       return { ...state, transactions: state.transactions.filter((t) => t.id !== action.payload) };
     case 'IMPORT_TRANSACTIONS':
       return { ...state, transactions: [...state.transactions, ...action.payload].sort((a, b) => a.date.localeCompare(b.date)) };
-    case 'ADD_TRANSFER':
+    case 'ADD_TRANSFER': {
+      const transactions = [...state.transactions, action.payload.source, action.payload.destination]
+        .sort((a, b) => a.date.localeCompare(b.date));
       return {
         ...state,
-        transactions: [...state.transactions, action.payload.source, action.payload.destination]
-          .sort((a, b) => a.date.localeCompare(b.date)),
+        transactions,
+        payees: ensureTransactionNamesInMasterList(state.payees, [action.payload.source, action.payload.destination], 'payee', 'recovered-payee'),
       };
+    }
     case 'UPDATE_TRANSFER': {
       const { transferId, source, destination } = action.payload;
       return {
@@ -102,10 +107,23 @@ export function reduceAppState(state, action, initialState, SHEET_TABS, V2_LEDGE
             ? (transaction.id === source.id ? source : destination)
             : transaction)
           .sort((a, b) => a.date.localeCompare(b.date)),
+        payees: ensureTransactionNamesInMasterList(state.payees, [source, destination], 'payee', 'recovered-payee'),
       };
     }
     case 'DELETE_TRANSFER':
       return { ...state, transactions: state.transactions.filter((t) => t.transferId !== action.payload) };
+    case 'COMPLETE_RECONCILIATION': {
+      const { reconciliation, transactionIds, draftId } = action.payload;
+      const selected = new Set(transactionIds);
+      return {
+        ...state,
+        reconciliations: [...state.reconciliations, reconciliation],
+        transactions: state.transactions.map((transaction) => selected.has(transaction.id)
+          ? { ...transaction, cleared: 'TRUE', reconciliationId: reconciliation.id }
+          : transaction),
+        reconcileDrafts: state.reconcileDrafts.filter((draft) => draft.id !== draftId),
+      };
+    }
 
     // Payees
     case 'ADD_PAYEE':

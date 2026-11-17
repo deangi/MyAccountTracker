@@ -107,7 +107,7 @@ export default function AppBarComponent({ onMenuClick, onWorkbookClosed }) {
           />
         )}
 
-        <LoginButton />
+        <LoginButton onSignedOut={onWorkbookClosed} />
       </Toolbar>
       <Dialog open={expiryPromptOpen} onClose={() => setExpiryPromptOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Save Before Google Sign-In Expires</DialogTitle>

@@ -22,7 +22,7 @@ const muiTheme = createTheme({
 });
 
 function AppContent() {
-  const { state, dispatch, load } = useApp();
+  const { state, dispatch } = useApp();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
@@ -38,13 +38,6 @@ function AppContent() {
       setAuthReady(true);
     });
   }, [dispatch]);
-
-  // Auto-load default spreadsheet when authenticated
-  useEffect(() => {
-    if (state.isAuthenticated && state.spreadsheetId && !state.meta.title) {
-      load(state.spreadsheetId);
-    }
-  }, [state.isAuthenticated, state.spreadsheetId, state.meta.title, load]);
 
   const handleViewAccount = useCallback((accountId) => {
     dispatch({ type: 'SELECT_ACCOUNT', payload: accountId });

@@ -183,7 +183,7 @@ export default function TransactionForm({ open, onClose, transaction, accountId 
   };
 
   const payeeNames = state.payees.map((p) => p.name);
-  const categoryNames = state.categories.map((c) => c.name);
+  const categoryNames = state.categories.map((c) => c.name).sort((a, b) => a.localeCompare(b));
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>

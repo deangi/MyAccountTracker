@@ -7,6 +7,7 @@ import {
 import { Add, Edit, Delete, FileDownload, FileUpload, DriveFileMove } from '@mui/icons-material';
 import { useApp } from '../../store/AppContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { deleteTransactionConfirmation } from '../../utils/deleteConfirmation';
 import TransactionForm from './TransactionForm';
 import CsvExport from './CsvExport';
 import CsvImport from './CsvImport';
@@ -91,9 +92,7 @@ export default function TransactionTable({ accountId }) {
   };
 
   const handleDelete = (transaction) => {
-    const message = transaction.transferId
-      ? 'Delete both sides of this transfer?'
-      : 'Delete this transaction?';
+    const message = deleteTransactionConfirmation(transaction, state.transactions);
     if (window.confirm(message)) {
       dispatch({ type: transaction.transferId ? 'DELETE_TRANSFER' : 'DELETE_TRANSACTION', payload: transaction.transferId || transaction.id });
     }
@@ -105,7 +104,8 @@ export default function TransactionTable({ accountId }) {
   };
 
   const uniquePayees = [...new Set(accountTransactions.map((t) => t.payee).filter(Boolean))];
-  const uniqueCategories = [...new Set(accountTransactions.map((t) => t.category).filter(Boolean))];
+  const uniqueCategories = [...new Set(accountTransactions.map((t) => t.category).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
 
   // Mobile card view
   if (isMobile) {

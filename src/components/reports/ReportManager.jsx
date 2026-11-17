@@ -9,6 +9,7 @@ import { buildV2LedgerData, createMultiSheetReportSpreadsheet, createReportSprea
 import { formatCurrency, toISODate } from '../../utils/formatters';
 import { buildNetWorthStatement, netWorthStatementRows } from '../../utils/netWorth';
 import { netProfitLossCategories, transactionsForProfitLoss } from '../../utils/profitLoss';
+import { selectCategoryTransactions } from '../../utils/categoryReport';
 
 const allValues = (items, key) => [...new Set(items.map((item) => item[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const money = (value) => Math.round(Number(value || 0) * 100) / 100;
@@ -24,6 +25,9 @@ export default function ReportManager() {
   const [categories, setCategories] = useState([]);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [categoryReportCategory, setCategoryReportCategory] = useState('');
+  const [categoryFromDate, setCategoryFromDate] = useState('');
+  const [categoryToDate, setCategoryToDate] = useState('');
   const [asOfDate, setAsOfDate] = useState(toISODate(new Date().toISOString()));
   const [incomeFromDate, setIncomeFromDate] = useState('');
   const [incomeToDate, setIncomeToDate] = useState(new Date().toISOString().slice(0, 10));
@@ -33,6 +37,10 @@ export default function ReportManager() {
 
   const payeeOptions = useMemo(() => allValues(state.transactions, 'payee'), [state.transactions]);
   const categoryOptions = useMemo(() => allValues(state.transactions, 'category'), [state.transactions]);
+  const allCategoryOptions = useMemo(() => [...new Set([
+    ...state.categories.map((item) => item.name),
+    ...categoryOptions,
+  ])].filter(Boolean).sort((a, b) => a.localeCompare(b)), [state.categories, categoryOptions]);
   const netWorthPreview = useMemo(() => {
     try { return { statement: buildNetWorthStatement({ accounts: state.accounts, transactions: state.transactions, asOfDate }) }; }
     catch (error) { return { error: error.message }; }
@@ -96,13 +104,53 @@ export default function ReportManager() {
           Number(transaction.payment || 0),
           Number(transaction.deposit || 0),
           transaction.category || '',
-          transaction.cleared ? 'Yes' : 'No',
+          transaction.cleared === 'TRUE' ? 'Yes' : 'No',
         ]),
       ];
       const spreadsheetId = await createReportSpreadsheet(title, 'Transaction List', rows);
       setResult({ title, count: filtered.length, url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}` });
     } catch (err) {
       setReportError(err.message || 'Could not create the report.');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const runCategoryReport = async () => {
+    setRunning(true);
+    setResult(null);
+    setReportError('');
+    try {
+      const filtered = selectCategoryTransactions(state.transactions, categoryReportCategory, categoryFromDate, categoryToDate);
+      const accountNames = new Map(state.accounts.map((account) => [account.id, account.nickname || account.name]));
+      const sourceFileName = state.meta.title || state.spreadsheetTitle || 'MyAccountTracker';
+      const runAt = new Date();
+      const title = `${sourceFileName} — Category Report — ${categoryReportCategory} — ${categoryFromDate} to ${categoryToDate}`;
+      const rows = [
+        ...reportHeader('Category Report', sourceFileName, runAt, ['Date range', `${categoryFromDate} through ${categoryToDate}`]),
+        ['Category', categoryReportCategory],
+        ['Accounts', 'All accounts'],
+        [],
+        ['Date', 'Account', 'Check # / Type', 'Payee', 'Memo', 'Payment', 'Deposit', 'Reconciled'],
+        ...filtered.map((transaction) => [
+          transaction.date,
+          accountNames.get(transaction.accountId) || 'Unknown account',
+          transaction.checkNum || '',
+          transaction.payee || '',
+          transaction.description || '',
+          Number(transaction.payment || 0),
+          Number(transaction.deposit || 0),
+          transaction.cleared === 'TRUE' ? 'Yes' : 'No',
+        ]),
+        [],
+        ['Total', '', '', '', '',
+          money(filtered.reduce((sum, transaction) => sum + Number(transaction.payment || 0), 0)),
+          money(filtered.reduce((sum, transaction) => sum + Number(transaction.deposit || 0), 0))],
+      ];
+      const spreadsheetId = await createReportSpreadsheet(title, 'Category Report', rows);
+      setResult({ title, count: filtered.length, url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}` });
+    } catch (error) {
+      setReportError(error.message || 'Could not create the Category Report.');
     } finally {
       setRunning(false);
     }
@@ -238,6 +286,22 @@ export default function ReportManager() {
         </Box>
         <Button sx={{ mt: 2 }} variant="contained" startIcon={<Description />} disabled={running} onClick={runTransactionList}>
           {running ? 'Creating report…' : 'Create Transaction List'}
+        </Button>
+      </Box>
+      <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2, mt: 2 }}>
+        <Typography variant="h6">Category Report</Typography>
+        <Typography variant="body2" color="text.secondary">Transactions in one category across all accounts for an inclusive date range.</Typography>
+        <TextField select fullWidth margin="dense" label="Category" value={categoryReportCategory}
+          onChange={(event) => setCategoryReportCategory(event.target.value)}>
+          <MenuItem value="">Select a category</MenuItem>
+          {allCategoryOptions.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
+        </TextField>
+        <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+          <TextField label="From date" type="date" fullWidth value={categoryFromDate} onChange={(event) => setCategoryFromDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+          <TextField label="To date" type="date" fullWidth value={categoryToDate} onChange={(event) => setCategoryToDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+        </Box>
+        <Button sx={{ mt: 2 }} variant="contained" startIcon={<Description />} disabled={running} onClick={runCategoryReport}>
+          {running ? 'Creating report…' : 'Create Category Report'}
         </Button>
       </Box>
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2, mt: 2 }}>

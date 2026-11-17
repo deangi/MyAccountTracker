@@ -8,8 +8,8 @@ import { useApp } from '../../store/AppContext';
 import { signIn, signOut } from '../../services/googleAuth';
 import { getAutoSaveStatus } from '../../services/autoSave';
 
-export default function LoginButton() {
-  const { state, save } = useApp();
+export default function LoginButton({ onSignedOut }) {
+  const { state, save, discardWorkspace } = useApp();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -25,12 +25,27 @@ export default function LoginButton() {
     return () => clearTimeout(timeout);
   }, [dialogOpen, saving]);
 
-  const handleSignOutClick = () => {
+  const finishSignOut = async () => {
+    await discardWorkspace();
+    onSignedOut();
+    signOut();
+    setDialogOpen(false);
+    setSaving(false);
+  };
+
+  const handleSignOutClick = async () => {
     if (getAutoSaveStatus().hasUnsavedChanges) {
       setSaveError('');
       setDialogOpen(true);
     } else {
-      signOut();
+      setSaving(true);
+      try {
+        await finishSignOut();
+      } catch (error) {
+        setSaveError(error.message || 'Sign-out could not complete.');
+        setDialogOpen(true);
+        setSaving(false);
+      }
     }
   };
 
@@ -40,16 +55,22 @@ export default function LoginButton() {
     try {
       const saved = await save();
       if (saved !== true) throw new Error('Save did not complete.');
-      signOut();
+      await finishSignOut();
     } catch (err) {
       console.error('Save before sign-out failed:', err);
-      setSaveError('Save failed. You can sign out without saving or try again.');
+      setSaveError(err.message || 'Save failed. You can sign out without saving or try again.');
       setSaving(false);
     }
   };
 
-  const handleSignOutWithoutSaving = () => {
-    signOut();
+  const handleSignOutWithoutSaving = async () => {
+    setSaving(true);
+    try {
+      await finishSignOut();
+    } catch (error) {
+      setSaveError(error.message || 'Sign-out could not complete.');
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -61,7 +82,7 @@ export default function LoginButton() {
   if (state.isAuthenticated) {
     return (
       <>
-        <Button color="inherit" startIcon={<Logout />} onClick={handleSignOutClick}>
+        <Button color="inherit" startIcon={<Logout />} onClick={handleSignOutClick} disabled={saving}>
           Sign Out
         </Button>
 

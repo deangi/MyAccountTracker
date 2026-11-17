@@ -81,12 +81,11 @@ export function renewAccessTokenSilently() {
 }
 
 export function signOut() {
-  if (accessToken) {
-    window.google.accounts.oauth2.revoke(accessToken, () => {
-      accessToken = null;
-      onAuthChange?.(false);
-    });
-  }
+  const tokenToRevoke = accessToken;
+  accessToken = null;
+  tokenAcquiredAt = null;
+  onAuthChange?.(false);
+  if (tokenToRevoke) window.google.accounts.oauth2.revoke(tokenToRevoke, () => {});
 }
 
 export function isSignedIn() {

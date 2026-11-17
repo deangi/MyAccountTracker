@@ -17,7 +17,7 @@ const AppContext = createContext(null);
 
 const initialState = {
   isAuthenticated: false,
-  spreadsheetId: localStorage.getItem('defaultSpreadsheetId') || null,
+  spreadsheetId: null,
   spreadsheetTitle: '',
   meta: { title: '', owner: '', lastSaved: '', version: CURRENT_SHEET_FORMAT_VERSION },
   accounts: [],
@@ -64,6 +64,10 @@ export function AppProvider({ children }) {
   const queueChainRef = useRef(Promise.resolve());
   const requiresFullSaveRef = useRef(false);
   const fileOperationRef = useRef(false);
+
+  useEffect(() => {
+    localStorage.removeItem('defaultSpreadsheetId');
+  }, []);
 
   const waitForSyncIdle = useCallback(async (workbookId) => {
     await queueChainRef.current;
@@ -160,7 +164,6 @@ export function AppProvider({ children }) {
         id = await createSpreadsheet(title);
         dispatch({ type: 'SET_SPREADSHEET', payload: { id, title } });
         dispatch({ type: 'SET_META', payload: { title } });
-        localStorage.setItem('defaultSpreadsheetId', id);
       }
       await writeAllTabs(id, getAppData());
       requiresFullSaveRef.current = false;
@@ -213,7 +216,6 @@ export function AppProvider({ children }) {
       projectedStateRef.current = null;
       requiresFullSaveRef.current = false;
       dispatch({ type: 'SET_SPREADSHEET', payload: { id: sheetId, title: data[SHEET_TABS.META]?.[0]?.title || '' } });
-      localStorage.setItem('defaultSpreadsheetId', sheetId);
       if (repaired || pending.length) markDirty();
       else markClean();
     } catch (err) {
@@ -221,6 +223,23 @@ export function AppProvider({ children }) {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, []);
+
+  const clearWorkspace = useCallback(() => {
+    syncWorkerRef.current?.terminate();
+    syncWorkerRef.current = null;
+    localStorage.removeItem('defaultSpreadsheetId');
+    projectedStateRef.current = null;
+    queueChainRef.current = Promise.resolve();
+    requiresFullSaveRef.current = false;
+    dispatch({ type: 'CLEAR_DATA' });
+    resetSaveStatus();
+  }, []);
+
+  const discardWorkspace = useCallback(async () => {
+    if (fileOperationRef.current) throw new Error('Wait for the file operation to finish before signing out.');
+    await queueChainRef.current;
+    clearWorkspace();
+  }, [clearWorkspace]);
 
   const close = useCallback(async () => {
     if (fileOperationRef.current) throw new Error('Wait for the file operation to finish before closing.');
@@ -237,11 +256,7 @@ export function AppProvider({ children }) {
         if (requiresFullSaveRef.current) throw new Error('Unsynced changes require repair before closing. Download a sync recovery bundle first.');
         await waitForSyncIdle(s.spreadsheetId);
       }
-      localStorage.removeItem('defaultSpreadsheetId');
-      projectedStateRef.current = null;
-      requiresFullSaveRef.current = false;
-      dispatch({ type: 'CLEAR_DATA' });
-      resetSaveStatus();
+      clearWorkspace();
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: error.message });
       dispatch({ type: 'SET_LOADING', payload: false });
@@ -249,7 +264,7 @@ export function AppProvider({ children }) {
     } finally {
       fileOperationRef.current = false;
     }
-  }, [save, waitForSyncIdle]);
+  }, [clearWorkspace, save, waitForSyncIdle]);
 
   const createNew = useCallback(async (title, owner) => {
     dispatch({ type: 'SET_LOADING', payload: true });
@@ -261,7 +276,6 @@ export function AppProvider({ children }) {
       projectedStateRef.current = null;
       dispatch({ type: 'SET_META', payload: meta });
       dispatch({ type: 'SET_SPREADSHEET', payload: { id, title } });
-      localStorage.setItem('defaultSpreadsheetId', id);
 
       // Write initial meta
       const created = await writeAllTabs(id, {
@@ -312,7 +326,6 @@ export function AppProvider({ children }) {
       dispatch({ type: 'SET_META', payload: { title } });
       dispatch({ type: 'SET_SPREADSHEET', payload: { id, title } });
       projectedStateRef.current = null;
-      localStorage.setItem('defaultSpreadsheetId', id);
       markClean();
       return { id, title };
     } catch (err) {
@@ -419,7 +432,6 @@ export function AppProvider({ children }) {
       dispatch({ type: 'SET_SPREADSHEET', payload: { id, title } });
       projectedStateRef.current = null;
       requiresFullSaveRef.current = false;
-      localStorage.setItem('defaultSpreadsheetId', id);
       markClean();
       return { id, title, ...restored };
     } finally {
@@ -492,6 +504,7 @@ export function AppProvider({ children }) {
     save,
     load,
     close,
+    discardWorkspace,
     createNew,
     saveAs,
     migrateToV3,

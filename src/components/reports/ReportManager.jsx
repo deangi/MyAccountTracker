@@ -9,7 +9,7 @@ import { buildV2LedgerData, createMultiSheetReportSpreadsheet, createReportSprea
 import { formatCurrency, toISODate } from '../../utils/formatters';
 import { buildNetWorthStatement, netWorthStatementRows } from '../../utils/netWorth';
 import { netProfitLossCategories, transactionsForProfitLoss } from '../../utils/profitLoss';
-import { selectCategoryTransactions } from '../../utils/categoryReport';
+import { selectReportTransactions } from '../../utils/transactionReport';
 
 const allValues = (items, key) => [...new Set(items.map((item) => item[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 const money = (value) => Math.round(Number(value || 0) * 100) / 100;
@@ -20,14 +20,12 @@ function reportHeader(title, sourceFileName, runAt, periodLabel) {
 
 export default function ReportManager() {
   const { state } = useApp();
-  const [accountIds, setAccountIds] = useState([]);
   const [payees, setPayees] = useState([]);
   const [categories, setCategories] = useState([]);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [categoryReportCategory, setCategoryReportCategory] = useState('');
-  const [categoryFromDate, setCategoryFromDate] = useState('');
-  const [categoryToDate, setCategoryToDate] = useState('');
+  const [amount, setAmount] = useState('');
+  const [amountDirection, setAmountDirection] = useState('either');
   const [asOfDate, setAsOfDate] = useState(toISODate(new Date().toISOString()));
   const [incomeFromDate, setIncomeFromDate] = useState('');
   const [incomeToDate, setIncomeToDate] = useState(new Date().toISOString().slice(0, 10));
@@ -35,12 +33,14 @@ export default function ReportManager() {
   const [result, setResult] = useState(null);
   const [reportError, setReportError] = useState('');
 
-  const payeeOptions = useMemo(() => allValues(state.transactions, 'payee'), [state.transactions]);
-  const categoryOptions = useMemo(() => allValues(state.transactions, 'category'), [state.transactions]);
-  const allCategoryOptions = useMemo(() => [...new Set([
+  const payeeOptions = useMemo(() => [...new Set([
+    ...state.payees.map((item) => item.name),
+    ...allValues(state.transactions, 'payee'),
+  ])].filter(Boolean).sort((a, b) => a.localeCompare(b)), [state.payees, state.transactions]);
+  const categoryOptions = useMemo(() => [...new Set([
     ...state.categories.map((item) => item.name),
-    ...categoryOptions,
-  ])].filter(Boolean).sort((a, b) => a.localeCompare(b)), [state.categories, categoryOptions]);
+    ...allValues(state.transactions, 'category'),
+  ])].filter(Boolean).sort((a, b) => a.localeCompare(b)), [state.categories, state.transactions]);
   const netWorthPreview = useMemo(() => {
     try { return { statement: buildNetWorthStatement({ accounts: state.accounts, transactions: state.transactions, asOfDate }) }; }
     catch (error) { return { error: error.message }; }
@@ -68,31 +68,27 @@ export default function ReportManager() {
     }
   };
 
-  const runTransactionList = async () => {
+  const runTransactionReport = async () => {
     setRunning(true);
     setResult(null);
     setReportError('');
     try {
       const accountNames = new Map(state.accounts.map((account) => [account.id, account.nickname || account.name]));
-      const filtered = state.transactions
-        .filter((transaction) => accountIds.length === 0 || accountIds.includes(transaction.accountId))
-        .filter((transaction) => payees.length === 0 || payees.includes(transaction.payee))
-        .filter((transaction) => categories.length === 0 || categories.includes(transaction.category))
-        .filter((transaction) => !fromDate || transaction.date >= fromDate)
-        .filter((transaction) => !toDate || transaction.date <= toDate)
-        .slice()
-        .sort((a, b) => a.date.localeCompare(b.date));
+      const filtered = selectReportTransactions(state.transactions, {
+        fromDate, toDate, payees, categories, amount, direction: amountDirection,
+      });
       const runAt = new Date();
       const sourceFileName = state.meta.title || state.spreadsheetTitle || 'MyAccountTracker';
-      const title = `${sourceFileName} — Transaction List — ${runAt.toISOString().slice(0, 10)}`;
+      const title = `${sourceFileName} — Transaction Report — ${fromDate} to ${toDate}`;
       const rows = [
-        ['Transaction List Report'],
+        ['Transaction Report'],
         ['Source account file', sourceFileName],
         ['Report run', runAt.toLocaleString()],
-        ['Date range', `${fromDate || 'All dates'} through ${toDate || 'All dates'}`],
-        ['Accounts', accountIds.length ? accountIds.map((id) => accountNames.get(id)).join(', ') : 'All accounts'],
+        ['Date range', `${fromDate} through ${toDate}`],
+        ['Accounts', 'All accounts'],
         ['Payees', payees.length ? payees.join(', ') : 'All payees'],
         ['Categories', categories.length ? categories.join(', ') : 'All categories'],
+        ['Amount', amount === '' ? 'Any amount' : `${amountDirection === 'either' ? 'Payment or deposit' : amountDirection} ${Number(amount).toFixed(2)}`],
         [],
         ['Date', 'Account', 'Check # / Type', 'Payee', 'Memo', 'Payment', 'Deposit', 'Category', 'Reconciled'],
         ...filtered.map((transaction) => [
@@ -106,51 +102,15 @@ export default function ReportManager() {
           transaction.category || '',
           transaction.cleared === 'TRUE' ? 'Yes' : 'No',
         ]),
-      ];
-      const spreadsheetId = await createReportSpreadsheet(title, 'Transaction List', rows);
-      setResult({ title, count: filtered.length, url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}` });
-    } catch (err) {
-      setReportError(err.message || 'Could not create the report.');
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const runCategoryReport = async () => {
-    setRunning(true);
-    setResult(null);
-    setReportError('');
-    try {
-      const filtered = selectCategoryTransactions(state.transactions, categoryReportCategory, categoryFromDate, categoryToDate);
-      const accountNames = new Map(state.accounts.map((account) => [account.id, account.nickname || account.name]));
-      const sourceFileName = state.meta.title || state.spreadsheetTitle || 'MyAccountTracker';
-      const runAt = new Date();
-      const title = `${sourceFileName} — Category Report — ${categoryReportCategory} — ${categoryFromDate} to ${categoryToDate}`;
-      const rows = [
-        ...reportHeader('Category Report', sourceFileName, runAt, ['Date range', `${categoryFromDate} through ${categoryToDate}`]),
-        ['Category', categoryReportCategory],
-        ['Accounts', 'All accounts'],
         [],
-        ['Date', 'Account', 'Check # / Type', 'Payee', 'Memo', 'Payment', 'Deposit', 'Reconciled'],
-        ...filtered.map((transaction) => [
-          transaction.date,
-          accountNames.get(transaction.accountId) || 'Unknown account',
-          transaction.checkNum || '',
-          transaction.payee || '',
-          transaction.description || '',
-          Number(transaction.payment || 0),
-          Number(transaction.deposit || 0),
-          transaction.cleared === 'TRUE' ? 'Yes' : 'No',
-        ]),
-        [],
-        ['Total', '', '', '', '',
+        ['Total', `${filtered.length} transactions`, '', '', '',
           money(filtered.reduce((sum, transaction) => sum + Number(transaction.payment || 0), 0)),
           money(filtered.reduce((sum, transaction) => sum + Number(transaction.deposit || 0), 0))],
       ];
-      const spreadsheetId = await createReportSpreadsheet(title, 'Category Report', rows);
+      const spreadsheetId = await createReportSpreadsheet(title, 'Transaction Report', rows);
       setResult({ title, count: filtered.length, url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}` });
-    } catch (error) {
-      setReportError(error.message || 'Could not create the Category Report.');
+    } catch (err) {
+      setReportError(err.message || 'Could not create the report.');
     } finally {
       setRunning(false);
     }
@@ -275,33 +235,24 @@ export default function ReportManager() {
       <Typography variant="h5" sx={{ mb: 1 }}>Reports</Typography>
       <Typography color="text.secondary" sx={{ mb: 2 }}>Run a report and save it as a separate Google Sheet. The report includes the date and time it was run.</Typography>
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
-        <Typography variant="h6">Transaction List</Typography>
-        <Typography variant="body2" color="text.secondary">Filter by one or more accounts, payees, categories, and dates.</Typography>
-        {multipleSelector('Accounts', accountIds, state.accounts, setAccountIds)}
+        <Typography variant="h6">Transaction Report</Typography>
+        <Typography variant="body2" color="text.secondary">All accounts. Select a date range, then optionally filter by payee, category, or amount. Linked transfers appear once per account side.</Typography>
         {multipleSelector('Payees', payees, payeeOptions, setPayees)}
         {multipleSelector('Categories', categories, categoryOptions, setCategories)}
         <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
           <TextField label="From date" type="date" fullWidth value={fromDate} onChange={(event) => setFromDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
           <TextField label="To date" type="date" fullWidth value={toDate} onChange={(event) => setToDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         </Box>
-        <Button sx={{ mt: 2 }} variant="contained" startIcon={<Description />} disabled={running} onClick={runTransactionList}>
-          {running ? 'Creating report…' : 'Create Transaction List'}
-        </Button>
-      </Box>
-      <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2, mt: 2 }}>
-        <Typography variant="h6">Category Report</Typography>
-        <Typography variant="body2" color="text.secondary">Transactions in one category across all accounts for an inclusive date range.</Typography>
-        <TextField select fullWidth margin="dense" label="Category" value={categoryReportCategory}
-          onChange={(event) => setCategoryReportCategory(event.target.value)}>
-          <MenuItem value="">Select a category</MenuItem>
-          {allCategoryOptions.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
-        </TextField>
         <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-          <TextField label="From date" type="date" fullWidth value={categoryFromDate} onChange={(event) => setCategoryFromDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-          <TextField label="To date" type="date" fullWidth value={categoryToDate} onChange={(event) => setCategoryToDate(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+          <TextField label="Amount (optional)" type="number" fullWidth value={amount} onChange={(event) => setAmount(event.target.value)} slotProps={{ htmlInput: { min: '0.01', step: '0.01' } }} />
+          <TextField select label="Amount type" fullWidth value={amountDirection} onChange={(event) => setAmountDirection(event.target.value)} disabled={amount === ''}>
+            <MenuItem value="either">Payment or deposit</MenuItem>
+            <MenuItem value="payment">Payment</MenuItem>
+            <MenuItem value="deposit">Deposit</MenuItem>
+          </TextField>
         </Box>
-        <Button sx={{ mt: 2 }} variant="contained" startIcon={<Description />} disabled={running} onClick={runCategoryReport}>
-          {running ? 'Creating report…' : 'Create Category Report'}
+        <Button sx={{ mt: 2 }} variant="contained" startIcon={<Description />} disabled={running} onClick={runTransactionReport}>
+          {running ? 'Creating report…' : 'Create Transaction Report'}
         </Button>
       </Box>
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2, mt: 2 }}>
